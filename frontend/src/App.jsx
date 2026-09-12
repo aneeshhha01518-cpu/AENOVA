@@ -1113,7 +1113,7 @@ function App() {
   useEffect(() => {
 
     fetch(
-      "http://127.0.0.1:8000/api/test"
+      "https://aenova.onrender.com/api/test"
     )
 
       .then(
@@ -1156,7 +1156,7 @@ function App() {
 
 
     fetch(
-      "http://127.0.0.1:8000/api/opportunities"
+      "https://aenova.onrender.com/api/opportunities"
     )
 
       .then(
@@ -1369,7 +1369,7 @@ function App() {
 
         const response =
           await fetch(
-            "http://127.0.0.1:8000/api/profile",
+            "https://aenova.onrender.com/api/profile",
             {
 
               method:
@@ -1578,7 +1578,7 @@ function App() {
 
         const response =
           await fetch(
-            "http://127.0.0.1:8000/api/chat",
+            "https://aenova.onrender.com/api/chat",
             {
 
               method:
