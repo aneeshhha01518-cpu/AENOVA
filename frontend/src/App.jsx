@@ -4,25 +4,8 @@ import "./App.css";
 import AENOVALogo from "./assets/AENOVA-logo.png";
 import HeroStudent from "./assets/HeroStudent.png";
 
-
 /* =========================================================
-   AENOVA AI RECOMMENDATION ENGINE
-   ---------------------------------------------------------
-   Explainable profile-based recommendation system.
-
-   It compares:
-   - student skills
-   - student interests
-   - career goal
-
-   against:
-   - opportunity title
-   - description
-   - category
-   - organization
-   - required skills
-
-   Feedback changes future ranking.
+   AENOVA — AI RECOMMENDATION ENGINE
    ========================================================= */
 
 function normalizeText(value) {
@@ -33,129 +16,61 @@ function normalizeText(value) {
     .trim();
 }
 
-
 function tokenize(value) {
   return normalizeText(value)
     .split(/[\s,;/|]+/)
     .map((word) => word.trim())
-    .filter(
-      (word) =>
-        word.length >= 2
-    );
+    .filter((word) => word.length >= 2);
 }
-
 
 function uniqueWords(value) {
-  return [
-    ...new Set(
-      tokenize(value)
-    ),
-  ];
+  return [...new Set(tokenize(value))];
 }
 
+function calculateRecommendation(opportunity, profile, feedback) {
+  const studentSkills = uniqueWords(profile.skills);
+  const studentInterests = uniqueWords(profile.interests);
+  const careerWords = uniqueWords(profile.career_goal);
 
-function calculateRecommendation(
-  opportunity,
-  profile,
-  feedback
-) {
-  const studentSkills =
-    uniqueWords(
-      profile.skills
-    );
+  const opportunityText = normalizeText(
+    [
+      opportunity.title,
+      opportunity.description,
+      opportunity.category,
+      opportunity.organization,
+      opportunity.skills_required,
+    ].join(" ")
+  );
 
-  const studentInterests =
-    uniqueWords(
-      profile.interests
-    );
+  const opportunitySkills = uniqueWords(
+    opportunity.skills_required
+  );
 
-  const careerWords =
-    uniqueWords(
-      profile.career_goal
-    );
+  const skillMatches = studentSkills.filter((skill) =>
+    opportunityText.includes(skill)
+  );
 
-  const opportunityText =
-    normalizeText(
-      [
-        opportunity.title,
-        opportunity.description,
-        opportunity.category,
-        opportunity.organization,
-        opportunity.skills_required,
-      ].join(" ")
-    );
+  const interestMatches = studentInterests.filter((interest) =>
+    opportunityText.includes(interest)
+  );
 
-  const opportunitySkills =
-    uniqueWords(
-      opportunity.skills_required
-    );
+  const careerMatches = careerWords.filter((word) =>
+    opportunityText.includes(word)
+  );
 
-
-  /* =======================================================
-     SKILL MATCH
-     ======================================================= */
-
-  const skillMatches =
-    studentSkills.filter(
-      (skill) =>
-        opportunityText.includes(skill)
-    );
-
-
-  /* =======================================================
-     INTEREST MATCH
-     ======================================================= */
-
-  const interestMatches =
-    studentInterests.filter(
-      (interest) =>
-        opportunityText.includes(interest)
-    );
-
-
-  /* =======================================================
-     CAREER MATCH
-     ======================================================= */
-
-  const careerMatches =
-    careerWords.filter(
-      (word) =>
-        opportunityText.includes(word)
-    );
-
-
-  /* =======================================================
-     CATEGORY / SEMANTIC KEYWORD MATCH
-     ======================================================= */
-
-  const category =
-    normalizeText(
-      opportunity.category
-    );
-
-  const title =
-    normalizeText(
-      opportunity.title
-    );
+  const category = normalizeText(opportunity.category);
+  const title = normalizeText(opportunity.title);
+  const careerGoal = normalizeText(profile.career_goal);
 
   let categoryBonus = 0;
-
-  const careerGoal =
-    normalizeText(
-      profile.career_goal
-    );
 
   if (
     careerGoal.includes("ai") &&
     (
       category.includes("hackathon") ||
       title.includes("ai") ||
-      opportunityText.includes(
-        "artificial intelligence"
-      ) ||
-      opportunityText.includes(
-        "machine learning"
-      )
+      opportunityText.includes("artificial intelligence") ||
+      opportunityText.includes("machine learning")
     )
   ) {
     categoryBonus += 8;
@@ -164,12 +79,8 @@ function calculateRecommendation(
   if (
     careerGoal.includes("data") &&
     (
-      opportunityText.includes(
-        "data"
-      ) ||
-      opportunityText.includes(
-        "analytics"
-      )
+      opportunityText.includes("data") ||
+      opportunityText.includes("analytics")
     )
   ) {
     categoryBonus += 8;
@@ -178,136 +89,52 @@ function calculateRecommendation(
   if (
     careerGoal.includes("software") &&
     (
-      opportunityText.includes(
-        "software"
-      ) ||
-      opportunityText.includes(
-        "development"
-      ) ||
-      opportunityText.includes(
-        "coding"
-      )
+      opportunityText.includes("software") ||
+      opportunityText.includes("development") ||
+      opportunityText.includes("coding")
     )
   ) {
     categoryBonus += 8;
   }
 
-
-  /* =======================================================
-     BASE SCORE
-     ======================================================= */
-
   let score = 20;
 
-  score +=
-    Math.min(
-      skillMatches.length * 12,
-      36
-    );
-
-  score +=
-    Math.min(
-      interestMatches.length * 9,
-      27
-    );
-
-  score +=
-    Math.min(
-      careerMatches.length * 7,
-      14
-    );
-
-  score +=
-    categoryBonus;
-
-
-  /* =======================================================
-     REQUIRED SKILL QUALITY
-     ======================================================= */
+  score += Math.min(skillMatches.length * 12, 36);
+  score += Math.min(interestMatches.length * 9, 27);
+  score += Math.min(careerMatches.length * 7, 14);
+  score += categoryBonus;
 
   if (
     opportunitySkills.length > 0 &&
     studentSkills.length > 0
   ) {
-    const requiredMatches =
-      opportunitySkills.filter(
-        (skill) =>
-          studentSkills.includes(
-            skill
-          )
-      );
-
-    score += Math.min(
-      requiredMatches.length * 5,
-      10
-    );
-  }
-
-
-  /* =======================================================
-     FEEDBACK LEARNING
-     ======================================================= */
-
-  const feedbackKey =
-    String(
-      opportunity.id ||
-      opportunity.title ||
-      ""
+    const requiredMatches = opportunitySkills.filter((skill) =>
+      studentSkills.includes(skill)
     );
 
-
-  const feedbackValue =
-    feedback[feedbackKey];
-
-
-  if (
-    feedbackValue === "like"
-  ) {
-    score += 12;
+    score += Math.min(requiredMatches.length * 5, 10);
   }
 
-  if (
-    feedbackValue === "dislike"
-  ) {
-    score -= 20;
-  }
+  const feedbackKey = String(
+    opportunity.id || opportunity.title || ""
+  );
 
+  const feedbackValue = feedback[feedbackKey];
 
-  /* =======================================================
-     LIMIT SCORE
-     ======================================================= */
+  if (feedbackValue === "like") score += 12;
+  if (feedbackValue === "dislike") score -= 20;
 
-  score =
-    Math.max(
-      0,
-      Math.min(
-        100,
-        Math.round(score)
-      )
-    );
-
-
-  /* =======================================================
-     EXPLANATION
-     ======================================================= */
+  score = Math.max(0, Math.min(100, Math.round(score)));
 
   const reasons = [];
 
-
-  if (
-    skillMatches.length > 0
-  ) {
+  if (skillMatches.length > 0) {
     reasons.push(
-      `matches your skills: ${skillMatches
-        .slice(0, 3)
-        .join(", ")}`
+      `matches your skills: ${skillMatches.slice(0, 3).join(", ")}`
     );
   }
 
-
-  if (
-    interestMatches.length > 0
-  ) {
+  if (interestMatches.length > 0) {
     reasons.push(
       `matches your interests: ${interestMatches
         .slice(0, 3)
@@ -315,49 +142,23 @@ function calculateRecommendation(
     );
   }
 
-
-  if (
-    careerMatches.length > 0
-  ) {
-    reasons.push(
-      `connects with your career goal`
-    );
+  if (careerMatches.length > 0) {
+    reasons.push("connects with your career goal");
   }
 
-
-  if (
-    categoryBonus > 0
-  ) {
-    reasons.push(
-      "aligns with your career direction"
-    );
+  if (categoryBonus > 0) {
+    reasons.push("aligns with your career direction");
   }
 
-
-  if (
-    reasons.length === 0
-  ) {
-    reasons.push(
-      "may be useful for exploring a new area"
-    );
+  if (reasons.length === 0) {
+    reasons.push("may be useful for exploring a new area");
   }
 
+  let level = "Possible match";
 
-  let level =
-    "Possible match";
-
-
-  if (score >= 75) {
-    level =
-      "Strong match";
-  } else if (score >= 55) {
-    level =
-      "Good match";
-  } else if (score >= 35) {
-    level =
-      "Potential match";
-  }
-
+  if (score >= 75) level = "Strong match";
+  else if (score >= 55) level = "Good match";
+  else if (score >= 35) level = "Potential match";
 
   return {
     score,
@@ -369,9 +170,8 @@ function calculateRecommendation(
   };
 }
 
-
 /* =========================================================
-   CLICKABLE MARKDOWN / URL FORMATTER
+   MARKDOWN / URL RENDERING
    ========================================================= */
 
 function formatInlineText(text) {
@@ -381,914 +181,541 @@ function formatInlineText(text) {
     /(\[[^\]]+\]\(https?:\/\/[^)]+\)|https?:\/\/[^\s]+|\*\*.*?\*\*|\*.*?\*|`.*?`)/g
   );
 
-  return parts.map(
-    (part, index) => {
+  return parts.map((part, index) => {
+    const markdownLink = part.match(
+      /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
+    );
 
-      /* MARKDOWN LINK */
+    if (markdownLink) {
+      return (
+        <a
+          key={index}
+          href={markdownLink[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "#5b55e8",
+            fontWeight: "800",
+            textDecoration: "underline",
+            cursor: "pointer",
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {markdownLink[1]}
+        </a>
+      );
+    }
 
-      const markdownLink =
-        part.match(
-          /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
-        );
+    if (
+      part.startsWith("http://") ||
+      part.startsWith("https://")
+    ) {
+      let cleanUrl = part;
+      let ending = "";
 
-      if (markdownLink) {
-        return (
+      while (/[.,!?;:]$/.test(cleanUrl)) {
+        ending = cleanUrl.slice(-1) + ending;
+        cleanUrl = cleanUrl.slice(0, -1);
+      }
+
+      return (
+        <span key={index}>
           <a
-            key={index}
-            href={markdownLink[2]}
+            href={cleanUrl}
             target="_blank"
             rel="noopener noreferrer"
             style={{
               color: "#5b55e8",
               fontWeight: "800",
-              textDecoration:
-                "underline",
-              cursor: "pointer",
+              textDecoration: "underline",
+              wordBreak: "break-all",
             }}
-            onClick={(event) =>
-              event.stopPropagation()
-            }
           >
-            {markdownLink[1]}
+            {cleanUrl}
           </a>
-        );
-      }
-
-
-      /* RAW URL */
-
-      if (
-        part.startsWith(
-          "http://"
-        ) ||
-        part.startsWith(
-          "https://"
-        )
-      ) {
-
-        let cleanUrl = part;
-        let ending = "";
-
-        while (
-          /[.,!?;:]$/.test(
-            cleanUrl
-          )
-        ) {
-          ending =
-            cleanUrl.slice(-1) +
-            ending;
-
-          cleanUrl =
-            cleanUrl.slice(0, -1);
-        }
-
-        return (
-          <span key={index}>
-
-            <a
-              href={cleanUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                color: "#5b55e8",
-                fontWeight: "800",
-                textDecoration:
-                  "underline",
-                cursor: "pointer",
-                wordBreak:
-                  "break-all",
-              }}
-              onClick={(event) =>
-                event.stopPropagation()
-              }
-            >
-              {cleanUrl}
-            </a>
-
-            {ending}
-
-          </span>
-        );
-      }
-
-
-      /* BOLD */
-
-      if (
-        part.startsWith(
-          "**"
-        ) &&
-        part.endsWith(
-          "**"
-        )
-      ) {
-        return (
-          <strong key={index}>
-            {part.slice(2, -2)}
-          </strong>
-        );
-      }
-
-
-      /* ITALIC */
-
-      if (
-        part.startsWith("*") &&
-        part.endsWith("*") &&
-        !part.startsWith("**")
-      ) {
-        return (
-          <em key={index}>
-            {part.slice(1, -1)}
-          </em>
-        );
-      }
-
-
-      /* INLINE CODE */
-
-      if (
-        part.startsWith("`") &&
-        part.endsWith("`")
-      ) {
-        return (
-          <code
-            key={index}
-            style={{
-              background:
-                "rgba(99,88,232,0.10)",
-              padding:
-                "2px 5px",
-              borderRadius:
-                "4px",
-              fontFamily:
-                "Consolas, Monaco, monospace",
-              fontSize:
-                "0.92em",
-            }}
-          >
-            {part.slice(1, -1)}
-          </code>
-        );
-      }
-
-
-      return (
-        <span key={index}>
-          {part}
+          {ending}
         </span>
       );
     }
-  );
+
+    if (
+      part.startsWith("**") &&
+      part.endsWith("**")
+    ) {
+      return (
+        <strong key={index}>
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+
+    if (
+      part.startsWith("*") &&
+      part.endsWith("*") &&
+      !part.startsWith("**")
+    ) {
+      return (
+        <em key={index}>
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
+
+    if (
+      part.startsWith("`") &&
+      part.endsWith("`")
+    ) {
+      return (
+        <code
+          key={index}
+          style={{
+            background: "rgba(99,88,232,0.10)",
+            padding: "2px 5px",
+            borderRadius: "4px",
+            fontFamily: "Consolas, Monaco, monospace",
+          }}
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return <span key={index}>{part}</span>;
+  });
 }
-
-
-/* =========================================================
-   AI RESPONSE RENDERER
-   ========================================================= */
 
 function renderAIText(text) {
   if (!text) return null;
 
-  const lines =
-    text.split("\n");
+  const lines = text.split("\n");
+  const elements = [];
 
-  let insideCode =
-    false;
+  let insideCode = false;
+  let codeLanguage = "";
+  let codeLines = [];
 
-  let codeLanguage =
-    "";
-
-  let codeLines =
-    [];
-
-  const elements =
-    [];
-
-
-  const addCodeBlock =
-    () => {
-
-      if (
-        codeLines.length === 0
-      ) {
-        codeLines = [];
-        codeLanguage = "";
-        return;
-      }
-
-
-      elements.push(
-        <div
-          key={`code-${elements.length}`}
-          style={{
-            margin:
-              "12px 0",
-            borderRadius:
-              "10px",
-            overflow:
-              "hidden",
-            background:
-              "#171923",
-            color:
-              "#f5f7ff",
-            border:
-              "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-
-          {codeLanguage && (
-            <div
-              style={{
-                padding:
-                  "7px 12px",
-                background:
-                  "#202331",
-                color:
-                  "#b8bed8",
-                fontSize:
-                  "10px",
-                fontWeight:
-                  "700",
-                textTransform:
-                  "uppercase",
-              }}
-            >
-              {codeLanguage}
-            </div>
-          )}
-
-
-          <pre
-            style={{
-              margin:
-                0,
-              padding:
-                "14px",
-              overflowX:
-                "auto",
-              fontSize:
-                "12px",
-              lineHeight:
-                "1.6",
-              fontFamily:
-                "Consolas, Monaco, monospace",
-              whiteSpace:
-                "pre-wrap",
-            }}
-          >
-            <code>
-              {codeLines.join("\n")}
-            </code>
-          </pre>
-
-        </div>
-      );
-
-
+  const addCodeBlock = () => {
+    if (codeLines.length === 0) {
       codeLines = [];
       codeLanguage = "";
-    };
+      return;
+    }
 
-
-  lines.forEach(
-    (line, index) => {
-
-      const trimmed =
-        line.trim();
-
-
-      if (
-        trimmed.startsWith(
-          "```"
-        )
-      ) {
-
-        if (!insideCode) {
-
-          insideCode =
-            true;
-
-          codeLanguage =
-            trimmed
-              .replace(
-                /^```/,
-                ""
-              )
-              .trim();
-
-          codeLines = [];
-
-        } else {
-
-          insideCode =
-            false;
-
-          addCodeBlock();
-
-        }
-
-        return;
-      }
-
-
-      if (insideCode) {
-
-        codeLines.push(
-          line
-        );
-
-        return;
-      }
-
-
-      if (!trimmed) {
-
-        elements.push(
+    elements.push(
+      <div
+        key={`code-${elements.length}`}
+        style={{
+          margin: "12px 0",
+          borderRadius: "10px",
+          overflow: "hidden",
+          background: "#171923",
+          color: "#f5f7ff",
+        }}
+      >
+        {codeLanguage && (
           <div
-            key={`space-${index}`}
             style={{
-              height:
-                "7px",
-            }}
-          />
-        );
-
-        return;
-      }
-
-
-      if (
-        trimmed.startsWith(
-          "# "
-        )
-      ) {
-
-        elements.push(
-          <h3
-            key={index}
-            style={{
-              margin:
-                "12px 0 7px",
-              fontSize:
-                "18px",
-              fontWeight:
-                "800",
+              padding: "7px 12px",
+              background: "#202331",
+              color: "#b8bed8",
+              fontSize: "10px",
+              fontWeight: "700",
+              textTransform: "uppercase",
             }}
           >
-            {formatInlineText(
-              trimmed.slice(2)
-            )}
-          </h3>
-        );
-
-        return;
-      }
-
-
-      if (
-        trimmed.startsWith(
-          "## "
-        ) ||
-        trimmed.startsWith(
-          "### "
-        )
-      ) {
-
-        const heading =
-          trimmed.startsWith(
-            "### "
-          )
-            ? trimmed.slice(4)
-            : trimmed.slice(3);
-
-        elements.push(
-          <h4
-            key={index}
-            style={{
-              margin:
-                "11px 0 6px",
-              fontSize:
-                "15px",
-              fontWeight:
-                "800",
-            }}
-          >
-            {formatInlineText(
-              heading
-            )}
-          </h4>
-        );
-
-        return;
-      }
-
-
-      if (
-        trimmed ===
-          "---" ||
-        trimmed ===
-          "***"
-      ) {
-
-        elements.push(
-          <hr
-            key={index}
-            style={{
-              border:
-                "none",
-              borderTop:
-                "1px solid rgba(80,80,120,0.15)",
-              margin:
-                "12px 0",
-            }}
-          />
-        );
-
-        return;
-      }
-
-
-      if (
-        trimmed.startsWith(
-          "- "
-        ) ||
-        trimmed.startsWith(
-          "* "
-        )
-      ) {
-
-        elements.push(
-          <div
-            key={index}
-            style={{
-              display:
-                "flex",
-              gap:
-                "8px",
-              marginBottom:
-                "6px",
-            }}
-          >
-
-            <span>
-              •
-            </span>
-
-            <span>
-              {formatInlineText(
-                trimmed.slice(2)
-              )}
-            </span>
-
+            {codeLanguage}
           </div>
-        );
+        )}
 
-        return;
+        <pre
+          style={{
+            margin: 0,
+            padding: "14px",
+            overflowX: "auto",
+            fontSize: "12px",
+            lineHeight: "1.6",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      </div>
+    );
+
+    codeLines = [];
+    codeLanguage = "";
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      if (!insideCode) {
+        insideCode = true;
+        codeLanguage = trimmed.replace(/^```/, "").trim();
+        codeLines = [];
+      } else {
+        insideCode = false;
+        addCodeBlock();
       }
 
+      return;
+    }
 
-      const numbered =
-        trimmed.match(
-          /^(\d+)\.\s+(.*)$/
-        );
+    if (insideCode) {
+      codeLines.push(line);
+      return;
+    }
 
+    if (!trimmed) {
+      elements.push(
+        <div
+          key={`space-${index}`}
+          style={{ height: "7px" }}
+        />
+      );
+      return;
+    }
 
-      if (numbered) {
+    if (trimmed.startsWith("# ")) {
+      elements.push(
+        <h3
+          key={index}
+          style={{
+            margin: "12px 0 7px",
+            fontSize: "18px",
+            fontWeight: "800",
+          }}
+        >
+          {formatInlineText(trimmed.slice(2))}
+        </h3>
+      );
+      return;
+    }
 
-        elements.push(
-          <div
-            key={index}
-            style={{
-              display:
-                "flex",
-              gap:
-                "8px",
-              marginBottom:
-                "6px",
-            }}
-          >
+    if (
+      trimmed.startsWith("## ") ||
+      trimmed.startsWith("### ")
+    ) {
+      const heading = trimmed.startsWith("### ")
+        ? trimmed.slice(4)
+        : trimmed.slice(3);
 
-            <strong>
-              {numbered[1]}.
-            </strong>
+      elements.push(
+        <h4
+          key={index}
+          style={{
+            margin: "11px 0 6px",
+            fontSize: "15px",
+            fontWeight: "800",
+          }}
+        >
+          {formatInlineText(heading)}
+        </h4>
+      );
+      return;
+    }
 
-            <span>
-              {formatInlineText(
-                numbered[2]
-              )}
-            </span>
+    if (trimmed === "---" || trimmed === "***") {
+      elements.push(
+        <hr
+          key={index}
+          style={{
+            border: "none",
+            borderTop:
+              "1px solid rgba(80,80,120,0.15)",
+            margin: "12px 0",
+          }}
+        />
+      );
+      return;
+    }
 
-          </div>
-        );
-
-        return;
-      }
-
-
+    if (
+      trimmed.startsWith("- ") ||
+      trimmed.startsWith("* ")
+    ) {
       elements.push(
         <div
           key={index}
           style={{
-            marginBottom:
-              "7px",
+            display: "flex",
+            gap: "8px",
+            marginBottom: "6px",
           }}
         >
-          {formatInlineText(
-            trimmed
-          )}
+          <span>•</span>
+          <span>{formatInlineText(trimmed.slice(2))}</span>
         </div>
       );
-
+      return;
     }
-  );
 
+    const numbered = trimmed.match(
+      /^(\d+)\.\s+(.*)$/
+    );
 
-  if (insideCode) {
-    addCodeBlock();
-  }
+    if (numbered) {
+      elements.push(
+        <div
+          key={index}
+          style={{
+            display: "flex",
+            gap: "8px",
+            marginBottom: "6px",
+          }}
+        >
+          <strong>{numbered[1]}.</strong>
+          <span>{formatInlineText(numbered[2])}</span>
+        </div>
+      );
+      return;
+    }
 
+    elements.push(
+      <div
+        key={index}
+        style={{ marginBottom: "7px" }}
+      >
+        {formatInlineText(trimmed)}
+      </div>
+    );
+  });
+
+  if (insideCode) addCodeBlock();
 
   return elements;
 }
-
 
 /* =========================================================
    MAIN APP
    ========================================================= */
 
 function App() {
+  const [selectedCategory, setSelectedCategory] =
+    useState("All");
 
+  const [backendMessage, setBackendMessage] =
+    useState("");
 
-  /* =======================================================
-     OPPORTUNITIES
-     ======================================================= */
+  const [opportunities, setOpportunities] =
+    useState([]);
 
-  const [
-    selectedCategory,
-    setSelectedCategory,
-  ] = useState("All");
-
-
-  const [
-    backendMessage,
-    setBackendMessage,
-  ] = useState("");
-
-
-  const [
-    opportunities,
-    setOpportunities,
-  ] = useState([]);
-
-
-  const [
-    loadingOpportunities,
-    setLoadingOpportunities,
-  ] = useState(true);
-
+  const [loadingOpportunities, setLoadingOpportunities] =
+    useState(true);
 
   /* =======================================================
-     PROFILE
+     EXPANDED PROFILE
      ======================================================= */
 
-  const [
-    profile,
-    setProfile,
-  ] = useState({
-    full_name: "",
-    email: "",
-    skills: "",
-    interests: "",
-    career_goal: "",
+  const [profile, setProfile] = useState(() => {
+    const defaults = {
+      full_name: "",
+      email: "",
+      college: "",
+      course: "",
+      study_year: "",
+      skills: "",
+      interests: "",
+      career_goal: "",
+      location: "",
+      preferred_scope: "Anywhere in India",
+      preferred_cities: "",
+      notification_enabled: true,
+      notification_categories:
+        "Hackathons, Internships, Competitions, Scholarships, Workshops, Conferences, Events, Jobs",
+      notification_frequency: "daily",
+    };
+
+    try {
+      const saved =
+        localStorage.getItem("aenova_profile");
+
+      return saved
+        ? { ...defaults, ...JSON.parse(saved) }
+        : defaults;
+    } catch {
+      return defaults;
+    }
   });
 
+  const [profileMessage, setProfileMessage] =
+    useState("");
 
-  const [
-    profileMessage,
-    setProfileMessage,
-  ] = useState("");
-
-
-  const [
-    savingProfile,
-    setSavingProfile,
-  ] = useState(false);
-
+  const [savingProfile, setSavingProfile] =
+    useState(false);
 
   /* =======================================================
      FEEDBACK
      ======================================================= */
 
-  const [
-    feedback,
-    setFeedback,
-  ] = useState(() => {
-
+  const [feedback, setFeedback] = useState(() => {
     try {
-
       const saved =
-        localStorage.getItem(
-          "aenova_feedback"
-        );
+        localStorage.getItem("aenova_feedback");
 
-      return saved
-        ? JSON.parse(saved)
-        : {};
-
+      return saved ? JSON.parse(saved) : {};
     } catch {
-
       return {};
-
     }
-
   });
 
-
-  /* =======================================================
-     RECOMMENDATION VIEW
-     ======================================================= */
-
-  const [
-    recommendationMode,
-    setRecommendationMode,
-  ] = useState(
-    "recommended"
-  );
-
+  const [recommendationMode, setRecommendationMode] =
+    useState("recommended");
 
   /* =======================================================
      CHAT
      ======================================================= */
 
-  const [
-    messages,
-    setMessages,
-  ] = useState([
+  const [messages, setMessages] = useState([
     {
-      id:
-        "welcome",
-
-      sender:
-        "bot",
-
+      id: "welcome",
+      sender: "bot",
       text:
         "Hey! 👋 I'm ANEBESTRA, your AI assistant inside AENOVA. What are you working on today?",
     },
   ]);
 
+  const [chatMessage, setChatMessage] =
+    useState("");
 
-  const [
-    chatMessage,
-    setChatMessage,
-  ] = useState("");
-
-
-  const [
-    sendingMessage,
-    setSendingMessage,
-  ] = useState(false);
-
+  const [sendingMessage, setSendingMessage] =
+    useState(false);
 
   /* =======================================================
-     CHAT SESSION
+     MULTI-USER SESSION
      ======================================================= */
 
-  const [
-    sessionId,
-    setSessionId,
-  ] = useState(() => {
+  const [sessionId, setSessionId] = useState(() => {
+    const saved = localStorage.getItem(
+      "aenova_anebestra_session"
+    );
 
-    const saved =
-      localStorage.getItem(
-        "aenova_anebestra_session"
-      );
-
-
-    if (saved) {
-      return saved;
-    }
-
+    if (saved) return saved;
 
     const newSession =
-      typeof crypto !==
-        "undefined" &&
-      typeof crypto.randomUUID ===
-        "function"
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `aenova-${Date.now()}`;
-
 
     localStorage.setItem(
       "aenova_anebestra_session",
       newSession
     );
 
-
     return newSession;
-
   });
 
-
   /* =======================================================
-     SAVE FEEDBACK LOCALLY
+     LOCAL STORAGE
      ======================================================= */
 
   useEffect(() => {
-
     localStorage.setItem(
       "aenova_feedback",
-      JSON.stringify(
-        feedback
-      )
+      JSON.stringify(feedback)
     );
-
   }, [feedback]);
 
+  useEffect(() => {
+    localStorage.setItem(
+      "aenova_profile",
+      JSON.stringify(profile)
+    );
+  }, [profile]);
 
   /* =======================================================
      BACKEND TEST
      ======================================================= */
 
   useEffect(() => {
-
     fetch(
       "https://aenova.onrender.com/api/test"
     )
-
-      .then(
-        (response) =>
-          response.json()
-      )
-
+      .then((response) => response.json())
       .then((data) => {
-
-        setBackendMessage(
-          data.message
-        );
-
+        setBackendMessage(data.message);
       })
-
       .catch((error) => {
-
-        console.error(
-          error
-        );
-
+        console.error(error);
         setBackendMessage(
           "Backend connection failed."
         );
-
       });
-
   }, []);
 
-
   /* =======================================================
-     LOAD LIVE OPPORTUNITIES
+     LOAD OPPORTUNITIES
      ======================================================= */
 
   useEffect(() => {
-
-    setLoadingOpportunities(
-      true
-    );
-
+    setLoadingOpportunities(true);
 
     fetch(
       "https://aenova.onrender.com/api/opportunities"
     )
-
-      .then(
-        (response) =>
-          response.json()
-      )
-
+      .then((response) => response.json())
       .then((data) => {
-
         if (
           data &&
-          Array.isArray(
-            data.opportunities
-          )
+          Array.isArray(data.opportunities)
         ) {
-
-          setOpportunities(
-            data.opportunities
-          );
-
+          setOpportunities(data.opportunities);
+        } else if (Array.isArray(data)) {
+          setOpportunities(data);
+        } else {
+          setOpportunities([]);
         }
-
-        else if (
-          Array.isArray(
-            data
-          )
-        ) {
-
-          setOpportunities(
-            data
-          );
-
-        }
-
-        else {
-
-          setOpportunities(
-            []
-          );
-
-        }
-
       })
-
       .catch((error) => {
-
         console.error(
           "Opportunity error:",
           error
         );
-
-        setOpportunities(
-          []
-        );
-
+        setOpportunities([]);
       })
-
       .finally(() => {
-
-        setLoadingOpportunities(
-          false
-        );
-
+        setLoadingOpportunities(false);
       });
-
   }, []);
 
-
   /* =======================================================
-     AI RECOMMENDATION CALCULATIONS
+     RECOMMENDATIONS
      ======================================================= */
 
-  const recommendations =
-    useMemo(() => {
-
-      return opportunities
-
-        .map(
-          (opportunity) => ({
-
-            opportunity,
-
-            analysis:
-              calculateRecommendation(
-                opportunity,
-                profile,
-                feedback
-              ),
-
-          })
-        )
-
-        .sort(
-          (a, b) =>
-            b.analysis.score -
-            a.analysis.score
-        );
-
-    }, [
-      opportunities,
-      profile,
-      feedback,
-    ]);
-
-
-  /* =======================================================
-     TOP RECOMMENDATIONS
-     ======================================================= */
+  const recommendations = useMemo(() => {
+    return opportunities
+      .map((opportunity) => ({
+        opportunity,
+        analysis: calculateRecommendation(
+          opportunity,
+          profile,
+          feedback
+        ),
+      }))
+      .sort(
+        (a, b) =>
+          b.analysis.score -
+          a.analysis.score
+      );
+  }, [
+    opportunities,
+    profile,
+    feedback,
+  ]);
 
   const topRecommendations =
     recommendations
       .filter(
         (item) =>
-          item.analysis.score >=
-          35
+          item.analysis.score >= 35
       )
-      .slice(
-        0,
-        6
-      );
-
-
-  /* =======================================================
-     CATEGORY FILTER
-     ======================================================= */
+      .slice(0, 6);
 
   const filteredOpportunities =
-    selectedCategory ===
-    "All"
-
+    selectedCategory === "All"
       ? opportunities
-
       : opportunities.filter(
           (opportunity) =>
             (
@@ -1298,1230 +725,747 @@ function App() {
             selectedCategory.toLowerCase()
         );
 
-
   /* =======================================================
      PROFILE UPDATE
      ======================================================= */
 
-  const updateProfile = (
-    field,
-    value
-  ) => {
-
-    setProfile(
-      (previous) => ({
-
-        ...previous,
-
-        [field]:
-          value,
-
-      })
-    );
-
+  const updateProfile = (field, value) => {
+    setProfile((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
   };
-
 
   /* =======================================================
      SAVE PROFILE
      ======================================================= */
 
-  const saveProfile =
-    async () => {
+  const saveProfile = async () => {
+    setProfileMessage("");
+
+    if (!profile.full_name.trim()) {
+      setProfileMessage(
+        "Please enter your full name."
+      );
+      return;
+    }
+
+    if (!profile.email.trim()) {
+      setProfileMessage(
+        "Please enter your email address."
+      );
+      return;
+    }
+
+    setSavingProfile(true);
+
+    try {
+      const response = await fetch(
+        "https://aenova.onrender.com/api/profile",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(profile),
+        }
+      );
+
+      const data = await response.json();
+
+      if (
+        response.ok &&
+        data.success !== false
+      ) {
+        if (
+          data.profile_id ||
+          data.id
+        ) {
+          localStorage.setItem(
+            "aenova_profile_id",
+            String(
+              data.profile_id ||
+              data.id
+            )
+          );
+        }
+
+        setProfileMessage(
+          "✓ Your profile has been saved successfully!"
+        );
+      } else {
+        setProfileMessage(
+          data.message ||
+            data.detail ||
+            "Unable to save your profile."
+        );
+      }
+    } catch (error) {
+      console.error(error);
 
       setProfileMessage(
-        ""
+        "Backend connection failed."
       );
-
-
-      if (
-        !profile.full_name.trim()
-      ) {
-
-        setProfileMessage(
-          "Please enter your full name."
-        );
-
-        return;
-
-      }
-
-
-      if (
-        !profile.email.trim()
-      ) {
-
-        setProfileMessage(
-          "Please enter your email address."
-        );
-
-        return;
-
-      }
-
-
-      setSavingProfile(
-        true
-      );
-
-
-      try {
-
-        const response =
-          await fetch(
-            "https://aenova.onrender.com/api/profile",
-            {
-
-              method:
-                "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify(
-                  profile
-                ),
-
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (
-          response.ok &&
-          data.success !==
-            false
-        ) {
-
-          setProfileMessage(
-            "✓ Your profile has been saved successfully!"
-          );
-
-        }
-
-        else {
-
-          setProfileMessage(
-            data.message ||
-              data.detail ||
-              "Unable to save your profile."
-          );
-
-        }
-
-      }
-
-      catch (error) {
-
-        console.error(
-          error
-        );
-
-        setProfileMessage(
-          "Backend connection failed."
-        );
-
-      }
-
-      finally {
-
-        setSavingProfile(
-          false
-        );
-
-      }
-
-    };
-
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   /* =======================================================
-     FEEDBACK HANDLER
+     FEEDBACK
      ======================================================= */
 
   const giveFeedback = (
     opportunity,
     type
   ) => {
-
-    const key =
-      String(
-        opportunity.id ||
+    const key = String(
+      opportunity.id ||
         opportunity.title ||
         ""
-      );
-
-
-    setFeedback(
-      (previous) => {
-
-        const updated =
-          {
-            ...previous,
-          };
-
-
-        /*
-         * Clicking the same button again
-         * removes the feedback.
-         */
-
-        if (
-          updated[key] ===
-          type
-        ) {
-
-          delete updated[key];
-
-        }
-
-        else {
-
-          updated[key] =
-            type;
-
-        }
-
-
-        return updated;
-
-      }
     );
 
-  };
-
-
-  /* =======================================================
-     SEND MESSAGE TO ANEBESTRA
-     ======================================================= */
-
-  const sendMessage =
-    async () => {
-
-      const message =
-        chatMessage.trim();
-
+    setFeedback((previous) => {
+      const updated = {
+        ...previous,
+      };
 
       if (
-        !message ||
-        sendingMessage
+        updated[key] === type
       ) {
+        delete updated[key];
+      } else {
+        updated[key] = type;
+      }
+
+      return updated;
+    });
+  };
+
+  /* =======================================================
+     SEND MESSAGE
+     ======================================================= */
+
+  const sendMessage = async () => {
+    const message =
+      chatMessage.trim();
+
+    if (
+      !message ||
+      sendingMessage
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+
+    const thinkingId =
+      `thinking-${now}`;
+
+    setMessages((previous) => [
+      ...previous,
+      {
+        id: `user-${now}`,
+        sender: "user",
+        text: message,
+      },
+      {
+        id: thinkingId,
+        sender: "bot",
+        text: "",
+        isThinking: true,
+      },
+    ]);
+
+    setChatMessage("");
+    setSendingMessage(true);
+
+    try {
+      const response = await fetch(
+        "https://aenova.onrender.com/api/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            message,
+            session_id: sessionId,
+
+            profile: {
+              profile_id:
+                localStorage.getItem(
+                  "aenova_profile_id"
+                ) || null,
+
+              full_name:
+                profile.full_name,
+
+              email:
+                profile.email,
+
+              college:
+                profile.college,
+
+              course:
+                profile.course,
+
+              study_year:
+                profile.study_year,
+
+              skills:
+                profile.skills,
+
+              interests:
+                profile.interests,
+
+              career_goal:
+                profile.career_goal,
+
+              location:
+                profile.location,
+
+              preferred_scope:
+                profile.preferred_scope,
+
+              preferred_cities:
+                profile.preferred_cities,
+
+              notification_enabled:
+                profile.notification_enabled,
+
+              notification_categories:
+                profile.notification_categories,
+
+              notification_frequency:
+                profile.notification_frequency,
+            },
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        const errorText =
+          data.reply ||
+          data.message ||
+          data.detail ||
+          "Sorry, I couldn't answer that right now.";
+
+        setMessages((previous) =>
+          previous.map((item) =>
+            item.id === thinkingId
+              ? {
+                  ...item,
+                  text: errorText,
+                  isThinking: false,
+                }
+              : item
+          )
+        );
 
         return;
-
       }
 
+      const fullReply =
+        data.reply ||
+        "I'm here. What would you like to explore?";
 
-      const now =
-        Date.now();
-
-
-      const thinkingId =
-        `thinking-${now}`;
-
-
-      /*
-       * Add user + thinking
-       * together.
-       */
-
-      setMessages(
-        (previous) => [
-
-          ...previous,
-
-          {
-            id:
-              `user-${now}`,
-
-            sender:
-              "user",
-
-            text:
-              message,
-          },
-
-          {
-            id:
-              thinkingId,
-
-            sender:
-              "bot",
-
-            text:
-              "",
-
-            isThinking:
-              true,
-          },
-
-        ]
+      setMessages((previous) =>
+        previous.map((item) =>
+          item.id === thinkingId
+            ? {
+                ...item,
+                text: "",
+                isThinking: false,
+                isStreaming: true,
+              }
+            : item
+        )
       );
 
+      let currentText = "";
 
-      setChatMessage(
-        ""
+      for (
+        let i = 0;
+        i < fullReply.length;
+        i++
+      ) {
+        currentText +=
+          fullReply[i];
+
+        setMessages((previous) =>
+          previous.map((item) =>
+            item.id === thinkingId
+              ? {
+                  ...item,
+                  text: currentText,
+                  isThinking: false,
+                  isStreaming: true,
+                }
+              : item
+          )
+        );
+
+        await new Promise(
+          (resolve) =>
+            setTimeout(
+              resolve,
+              5
+            )
+        );
+      }
+
+      setMessages((previous) =>
+        previous.map((item) =>
+          item.id === thinkingId
+            ? {
+                ...item,
+                text: fullReply,
+                isThinking: false,
+                isStreaming: false,
+              }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error(
+        "ANEBESTRA error:",
+        error
       );
 
-
-      setSendingMessage(
-        true
+      setMessages((previous) =>
+        previous.map((item) =>
+          item.id === thinkingId
+            ? {
+                ...item,
+                text:
+                  "I couldn't connect to the AENOVA AI service. Please check that the backend is running.",
+                isThinking: false,
+                isStreaming: false,
+              }
+            : item
+        )
       );
-
-
-      try {
-
-        const response =
-          await fetch(
-            "https://aenova.onrender.com/api/chat",
-            {
-
-              method:
-                "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify({
-
-                  message:
-                    message,
-
-                  session_id:
-                    sessionId,
-
-                  profile: {
-
-                    skills:
-                      profile.skills,
-
-                    interests:
-                      profile.interests,
-
-                    career_goal:
-                      profile.career_goal,
-
-                  },
-
-                }),
-
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (
-          !response.ok ||
-          !data.success
-        ) {
-
-          const errorText =
-            data.reply ||
-            data.message ||
-            data.detail ||
-            "Sorry, I couldn't answer that right now.";
-
-
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.id ===
-                  thinkingId
-
-                    ? {
-                        ...item,
-
-                        text:
-                          errorText,
-
-                        isThinking:
-                          false,
-                      }
-
-                    : item
-              )
-          );
-
-
-          return;
-
-        }
-
-
-        const fullReply =
-          data.reply ||
-          "I'm here. What would you like to explore?";
-
-
-        /*
-         * Remove thinking state.
-         */
-
-        setMessages(
-          (previous) =>
-            previous.map(
-              (item) =>
-                item.id ===
-                thinkingId
-
-                  ? {
-                      ...item,
-
-                      text:
-                        "",
-
-                      isThinking:
-                        false,
-
-                      isStreaming:
-                        true,
-                    }
-
-                  : item
-            )
-        );
-
-
-        /*
-         * Typing animation.
-         */
-
-        let currentText =
-          "";
-
-
-        for (
-          let i = 0;
-          i <
-          fullReply.length;
-          i++
-        ) {
-
-          currentText +=
-            fullReply[i];
-
-
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.id ===
-                  thinkingId
-
-                    ? {
-                        ...item,
-
-                        text:
-                          currentText,
-
-                        isThinking:
-                          false,
-
-                        isStreaming:
-                          true,
-                      }
-
-                    : item
-              )
-          );
-
-
-          await new Promise(
-            (resolve) =>
-              setTimeout(
-                resolve,
-                5
-              )
-          );
-
-        }
-
-
-        /*
-         * Final answer.
-         */
-
-        setMessages(
-          (previous) =>
-            previous.map(
-              (item) =>
-                item.id ===
-                thinkingId
-
-                  ? {
-                      ...item,
-
-                      text:
-                        fullReply,
-
-                      isThinking:
-                        false,
-
-                      isStreaming:
-                        false,
-                    }
-
-                  : item
-            )
-        );
-
-      }
-
-      catch (error) {
-
-        console.error(
-          "ANEBESTRA error:",
-          error
-        );
-
-
-        setMessages(
-          (previous) =>
-            previous.map(
-              (item) =>
-                item.id ===
-                thinkingId
-
-                  ? {
-                      ...item,
-
-                      text:
-                        "I couldn't connect to the AENOVA AI service. Please check that the backend is running.",
-
-                      isThinking:
-                        false,
-
-                      isStreaming:
-                        false,
-                    }
-
-                  : item
-            )
-        );
-
-      }
-
-      finally {
-
-        setSendingMessage(
-          false
-        );
-
-      }
-
-    };
-
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   /* =======================================================
      NEW CHAT
      ======================================================= */
 
-  const startNewChat =
-    () => {
+  const startNewChat = () => {
+    const newSession =
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `aenova-${Date.now()}`;
 
-      const newSession =
-        typeof crypto !==
-          "undefined" &&
-        typeof crypto.randomUUID ===
-          "function"
+    localStorage.setItem(
+      "aenova_anebestra_session",
+      newSession
+    );
 
-          ? crypto.randomUUID()
+    setSessionId(newSession);
 
-          : `aenova-${Date.now()}`;
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: "bot",
+        text:
+          "Fresh conversation started. 👋 What would you like to work on?",
+      },
+    ]);
+  };
 
-
-      localStorage.setItem(
-        "aenova_anebestra_session",
-        newSession
-      );
-
-
-      setSessionId(
-        newSession
-      );
-
-
-      setMessages([
-        {
-          id:
-            `welcome-${Date.now()}`,
-
-          sender:
-            "bot",
-
-          text:
-            "Fresh conversation started. 👋 What would you like to work on?",
-        },
-      ]);
-
-    };
-
-
-  /* =======================================================
-     ENTER KEY
-     ======================================================= */
-
-  const handleChatKeyDown =
-    (event) => {
-
-      if (
-        event.key ===
-          "Enter" &&
-        !event.shiftKey
-      ) {
-
-        event.preventDefault();
-
-        sendMessage();
-
-      }
-
-    };
-
+  const handleChatKeyDown = (
+    event
+  ) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      sendMessage();
+    }
+  };
 
   /* =======================================================
      RECOMMENDATION CARD
      ======================================================= */
 
-  const RecommendationCard =
-    ({
-      item,
-      featured = false,
-    }) => {
+  const RecommendationCard = ({
+    item,
+    featured = false,
+  }) => {
+    const opportunity =
+      item.opportunity;
 
-      const opportunity =
-        item.opportunity;
+    const analysis =
+      item.analysis;
 
-      const analysis =
-        item.analysis;
+    const key = String(
+      opportunity.id ||
+        opportunity.title ||
+        ""
+    );
 
+    const currentFeedback =
+      feedback[key];
 
-      const key =
-        String(
-          opportunity.id ||
-          opportunity.title ||
-          ""
-        );
-
-
-      const currentFeedback =
-        feedback[key];
-
-
-      return (
-
+    return (
+      <div
+        className="recommendation-card"
+        style={{
+          position: "relative",
+          background: "#ffffff",
+          border: featured
+            ? "2px solid #6658e8"
+            : "1px solid #e7e7f3",
+          borderRadius: "18px",
+          padding: "20px",
+          boxShadow: featured
+            ? "0 12px 35px rgba(92,82,220,0.14)"
+            : "0 8px 25px rgba(40,40,100,0.06)",
+          boxSizing: "border-box",
+          height: "100%",
+        }}
+      >
         <div
-          className="recommendation-card"
           style={{
-            position:
-              "relative",
-
-            background:
-              "#ffffff",
-
-            border:
-              featured
-                ? "2px solid #6658e8"
-                : "1px solid #e7e7f3",
-
-            borderRadius:
-              "18px",
-
-            padding:
-              "20px",
-
-            boxShadow:
-              featured
-                ? "0 12px 35px rgba(92,82,220,0.14)"
-                : "0 8px 25px rgba(40,40,100,0.06)",
-
-            transition:
-              "transform .2s ease, box-shadow .2s ease",
-
-            boxSizing:
-              "border-box",
-
-            height:
-              "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            marginBottom: "12px",
           }}
         >
-
-          {/* MATCH BADGE */}
-
-          <div
+          <span
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "space-between",
-
-              gap:
-                "10px",
-
-              marginBottom:
-                "12px",
-            }}
-          >
-
-            <span
-              style={{
-                display:
-                  "inline-flex",
-
-                alignItems:
-                  "center",
-
-                padding:
-                  "6px 10px",
-
-                borderRadius:
-                  "999px",
-
-                background:
-                  analysis.score >=
-                  75
-                    ? "#e9f8f1"
-                    : analysis.score >=
-                      55
-                    ? "#eef1ff"
-                    : "#f5f5fb",
-
-                color:
-                  analysis.score >=
-                  75
-                    ? "#16866f"
-                    : "#5c55d9",
-
-                fontSize:
-                  "11px",
-
-                fontWeight:
-                  "800",
-              }}
-            >
-              {analysis.level}
-            </span>
-
-
-            <span
-              style={{
-                fontSize:
-                  "20px",
-
-                fontWeight:
-                  "900",
-
-                color:
-                  "#5e55df",
-              }}
-            >
-              {analysis.score}%
-            </span>
-
-          </div>
-
-
-          {/* CATEGORY */}
-
-          <div
-            style={{
-              fontSize:
-                "11px",
-
-              color:
-                "#777",
-
-              fontWeight:
-                "700",
-
-              textTransform:
-                "uppercase",
-
-              letterSpacing:
-                "0.5px",
-
-              marginBottom:
-                "7px",
-            }}
-          >
-            {opportunity.category ||
-              "Opportunity"}
-          </div>
-
-
-          {/* TITLE */}
-
-          <h3
-            style={{
-              margin:
-                "0 0 9px",
-
-              color:
-                "#181b38",
-
-              fontSize:
-                "17px",
-
-              lineHeight:
-                "1.35",
-            }}
-          >
-            {opportunity.title ||
-              "Opportunity"}
-          </h3>
-
-
-          {/* DESCRIPTION */}
-
-          <p
-            style={{
-              margin:
-                "0 0 12px",
-
-              color:
-                "#64667d",
-
-              fontSize:
-                "13px",
-
-              lineHeight:
-                "1.55",
-            }}
-          >
-            {opportunity.description ||
-              "See the official listing for complete details."}
-          </p>
-
-
-          {/* WHY */}
-
-          <div
-            style={{
+              display: "inline-flex",
+              padding: "6px 10px",
+              borderRadius: "999px",
               background:
-                "#f6f5ff",
-
-              borderRadius:
-                "12px",
-
-              padding:
-                "12px",
-
-              marginBottom:
-                "13px",
-            }}
-          >
-
-            <div
-              style={{
-                fontSize:
-                  "11px",
-
-                fontWeight:
-                  "800",
-
-                color:
-                  "#5c55d9",
-
-                marginBottom:
-                  "5px",
-              }}
-            >
-              ✦ WHY AENOVA RECOMMENDS THIS
-            </div>
-
-
-            <div
-              style={{
-                fontSize:
-                  "12px",
-
-                color:
-                  "#45465e",
-
-                lineHeight:
-                  "1.5",
-              }}
-            >
-
-              {analysis.reasons
-                .slice(0, 2)
-                .map(
-                  (
-                    reason,
-                    index
-                  ) => (
-
-                    <div
-                      key={
-                        index
-                      }
-                      style={{
-                        marginBottom:
-                          index <
-                          analysis.reasons
-                            .length -
-                            1
-                            ? "3px"
-                            : "0",
-                      }}
-                    >
-                      • {reason}
-                    </div>
-
-                  )
-                )}
-
-            </div>
-
-          </div>
-
-
-          {/* DETAILS */}
-
-          <div
-            style={{
-              display:
-                "flex",
-
-              flexDirection:
-                "column",
-
-              gap:
-                "5px",
-
-              marginBottom:
-                "15px",
-
-              fontSize:
-                "11px",
-
+                analysis.score >= 75
+                  ? "#e9f8f1"
+                  : analysis.score >= 55
+                  ? "#eef1ff"
+                  : "#f5f5fb",
               color:
-                "#77788d",
+                analysis.score >= 75
+                  ? "#16866f"
+                  : "#5c55d9",
+              fontSize: "11px",
+              fontWeight: "800",
             }}
           >
+            {analysis.level}
+          </span>
 
-            {opportunity.location && (
-              <span>
-                📍{" "}
-                {opportunity.location}
-              </span>
-            )}
+          <span
+            style={{
+              fontSize: "20px",
+              fontWeight: "900",
+              color: "#5e55df",
+            }}
+          >
+            {analysis.score}%
+          </span>
+        </div>
 
-            {opportunity.organization && (
-              <span>
-                🏢{" "}
-                {opportunity.organization}
-              </span>
-            )}
+        <div
+          style={{
+            fontSize: "11px",
+            color: "#777",
+            fontWeight: "700",
+            textTransform: "uppercase",
+            marginBottom: "7px",
+          }}
+        >
+          {opportunity.category ||
+            "Opportunity"}
+        </div>
 
-            {opportunity.deadline && (
-              <span>
-                📅 Registration:{" "}
-                {opportunity.deadline}
-              </span>
-            )}
+        <h3
+          style={{
+            margin: "0 0 9px",
+            color: "#181b38",
+            fontSize: "17px",
+            lineHeight: "1.35",
+          }}
+        >
+          {opportunity.title ||
+            "Opportunity"}
+        </h3>
 
-            {opportunity.event_date && (
-              <span>
-                🗓 Event:{" "}
-                {opportunity.event_date}
-              </span>
-            )}
+        <p
+          style={{
+            margin: "0 0 12px",
+            color: "#64667d",
+            fontSize: "13px",
+            lineHeight: "1.55",
+          }}
+        >
+          {opportunity.description ||
+            "See the official listing for complete details."}
+        </p>
 
+        <div
+          style={{
+            background: "#f6f5ff",
+            borderRadius: "12px",
+            padding: "12px",
+            marginBottom: "13px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: "800",
+              color: "#5c55d9",
+              marginBottom: "5px",
+            }}
+          >
+            ✦ WHY AENOVA RECOMMENDS THIS
           </div>
-
-
-          {/* FEEDBACK */}
 
           <div
             style={{
-              display:
-                "flex",
-
-              alignItems:
-                "center",
-
-              justifyContent:
-                "space-between",
-
-              gap:
-                "8px",
-
-              marginBottom:
-                "10px",
+              fontSize: "12px",
+              color: "#45465e",
+              lineHeight: "1.5",
             }}
           >
-
-            <span
-              style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#88899c",
-              }}
-            >
-              Is this recommendation useful?
-            </span>
-
-
-            <div
-              style={{
-                display:
-                  "flex",
-
-                gap:
-                  "6px",
-              }}
-            >
-
-              <button
-                type="button"
-                onClick={() =>
-                  giveFeedback(
-                    opportunity,
-                    "like"
-                  )
-                }
-                style={{
-                  border:
-                    currentFeedback ===
-                    "like"
-                      ? "1px solid #4baf8f"
-                      : "1px solid #e4e4ef",
-
-                  background:
-                    currentFeedback ===
-                    "like"
-                      ? "#eaf8f3"
-                      : "#fff",
-
-                  borderRadius:
-                    "8px",
-
-                  cursor:
-                    "pointer",
-
-                  padding:
-                    "5px 9px",
-
-                  fontSize:
-                    "13px",
-                }}
-                title="Good recommendation"
-              >
-                👍
-              </button>
-
-
-              <button
-                type="button"
-                onClick={() =>
-                  giveFeedback(
-                    opportunity,
-                    "dislike"
-                  )
-                }
-                style={{
-                  border:
-                    currentFeedback ===
-                    "dislike"
-                      ? "1px solid #d98a8a"
-                      : "1px solid #e4e4ef",
-
-                  background:
-                    currentFeedback ===
-                    "dislike"
-                      ? "#fff0f0"
-                      : "#fff",
-
-                  borderRadius:
-                    "8px",
-
-                  cursor:
-                    "pointer",
-
-                  padding:
-                    "5px 9px",
-
-                  fontSize:
-                    "13px",
-                }}
-                title="Not useful"
-              >
-                👎
-              </button>
-
-            </div>
-
+            {analysis.reasons
+              .slice(0, 2)
+              .map((reason, index) => (
+                <div key={index}>
+                  • {reason}
+                </div>
+              ))}
           </div>
+        </div>
 
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "5px",
+            marginBottom: "15px",
+            fontSize: "11px",
+            color: "#77788d",
+          }}
+        >
+          {opportunity.location && (
+            <span>
+              📍 {opportunity.location}
+            </span>
+          )}
 
-          {/* OFFICIAL LINK */}
+          {opportunity.organization && (
+            <span>
+              🏢 {opportunity.organization}
+            </span>
+          )}
 
-          {opportunity.url ? (
+          {opportunity.deadline && (
+            <span>
+              📅 Registration:{" "}
+              {opportunity.deadline}
+            </span>
+          )}
 
-            <a
-              href={
-                opportunity.url
+          {opportunity.event_date && (
+            <span>
+              🗓 Event:{" "}
+              {opportunity.event_date}
+            </span>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent:
+              "space-between",
+            marginBottom: "10px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#88899c",
+            }}
+          >
+            Is this recommendation useful?
+          </span>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "6px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                giveFeedback(
+                  opportunity,
+                  "like"
+                )
               }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="view-button"
               style={{
-                display:
-                  "block",
-
-                textAlign:
-                  "center",
-
-                textDecoration:
-                  "none",
-
-                boxSizing:
-                  "border-box",
-
-                width:
-                  "100%",
+                border:
+                  currentFeedback ===
+                  "like"
+                    ? "1px solid #4baf8f"
+                    : "1px solid #e4e4ef",
+                background:
+                  currentFeedback ===
+                  "like"
+                    ? "#eaf8f3"
+                    : "#fff",
+                borderRadius: "8px",
+                cursor: "pointer",
+                padding: "5px 9px",
               }}
             >
-              View Official Listing →
-            </a>
-
-          ) : (
+              👍
+            </button>
 
             <button
               type="button"
-              className="view-button"
-              disabled
+              onClick={() =>
+                giveFeedback(
+                  opportunity,
+                  "dislike"
+                )
+              }
               style={{
-                width:
-                  "100%",
+                border:
+                  currentFeedback ===
+                  "dislike"
+                    ? "1px solid #d98a8a"
+                    : "1px solid #e4e4ef",
+                background:
+                  currentFeedback ===
+                  "dislike"
+                    ? "#fff0f0"
+                    : "#fff",
+                borderRadius: "8px",
+                cursor: "pointer",
+                padding: "5px 9px",
               }}
             >
-              Official listing unavailable
+              👎
             </button>
-
-          )}
-
+          </div>
         </div>
 
-      );
-
-    };
-
+        {opportunity.url ? (
+          <a
+            href={opportunity.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="view-button"
+            style={{
+              display: "block",
+              textAlign: "center",
+              textDecoration: "none",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            View Official Listing →
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="view-button"
+            disabled
+            style={{ width: "100%" }}
+          >
+            Official listing unavailable
+          </button>
+        )}
+      </div>
+    );
+  };
 
   /* =======================================================
      RENDER
      ======================================================= */
 
   return (
-
     <div className="app">
 
-
-      {/* =================================================
-          NAVBAR
-      ================================================= */}
+      {/* NAVBAR */}
 
       <nav className="navbar">
-
         <a
           href="#home"
           className="logo-link"
         >
-
           <img
             src={AENOVALogo}
             alt="AENOVA"
             className="aenova-logo"
           />
-
         </a>
 
-
         <div className="nav-links">
-
-          <a href="#home">
-            Home
-          </a>
-
-          <a href="#features">
-            Features
-          </a>
-
+          <a href="#home">Home</a>
+          <a href="#features">Features</a>
           <a href="#how-it-works">
             How it works
           </a>
-
           <a href="#recommendations">
             AI Matches
           </a>
-
           <a href="#opportunities">
             Opportunities
           </a>
-
           <a href="#assistant">
             AI Assistant
           </a>
-
           <a
             href="#profile"
             className="nav-button"
           >
             Get Started →
           </a>
-
         </div>
-
       </nav>
 
-
-      {/* =================================================
-          HERO
-      ================================================= */}
+      {/* HERO */}
 
       <section
         className="hero"
         id="home"
       >
-
         <div className="hero-content">
-
           <div className="hero-badge">
             ✦ AI-Powered Student Opportunities
           </div>
 
-
           <h1>
             Discover the right
-
             <span>
               {" "}opportunities.
             </span>
-
             <br />
-
             Build your future.
           </h1>
-
 
           <p>
             AENOVA connects students with
@@ -2531,9 +1475,7 @@ function App() {
             intelligent platform.
           </p>
 
-
           <div className="hero-buttons">
-
             <a
               href="#recommendations"
               className="primary-button"
@@ -2541,16 +1483,13 @@ function App() {
               Get My AI Matches →
             </a>
 
-
             <a
               href="#assistant"
               className="secondary-button"
             >
               Meet ANEBESTRA
             </a>
-
           </div>
-
 
           <div className="hero-note">
             ✦ Personalized matching
@@ -2560,43 +1499,31 @@ function App() {
             Explainable recommendations
           </div>
 
-
           {backendMessage && (
             <div className="backend-status">
               ✓ {backendMessage}
             </div>
           )}
-
         </div>
 
-
         <div className="hero-visual">
-
           <img
             src={HeroStudent}
             alt="Student discovering opportunities"
           />
-
         </div>
-
       </section>
 
-
-      {/* =================================================
-          FEATURES
-      ================================================= */}
+      {/* FEATURES */}
 
       <section
         className="features-section"
         id="features"
       >
-
         <div className="section-heading">
-
           <div className="section-badge">
             ✦ Built for students
           </div>
-
 
           <h2>
             Everything you need to
@@ -2605,21 +1532,17 @@ function App() {
             </span>
           </h2>
 
-
           <p>
             AENOVA combines opportunity
             discovery, explainable
             recommendations, feedback,
             and AI assistance.
           </p>
-
         </div>
-
 
         <div className="features-grid">
 
           <div className="feature-card">
-
             <div className="feature-icon blue-icon">
               ✦
             </div>
@@ -2637,12 +1560,9 @@ function App() {
             <a href="#recommendations">
               See my matches →
             </a>
-
           </div>
 
-
           <div className="feature-card">
-
             <div className="feature-icon purple-icon">
               ✦
             </div>
@@ -2652,20 +1572,17 @@ function App() {
             </h3>
 
             <p>
-              Skills, interests, and career
-              goals influence the relevance
-              of each recommendation.
+              Skills, interests, location,
+              education, and career goals
+              can guide your opportunity journey.
             </p>
 
             <a href="#profile">
               Build profile →
             </a>
-
           </div>
 
-
           <div className="feature-card">
-
             <div className="feature-icon teal-icon">
               ✦
             </div>
@@ -2683,12 +1600,9 @@ function App() {
             <a href="#recommendations">
               Give feedback →
             </a>
-
           </div>
 
-
           <div className="feature-card">
-
             <div className="feature-icon orange-icon">
               ✦
             </div>
@@ -2706,29 +1620,21 @@ function App() {
             <a href="#assistant">
               Talk to ANEBESTRA →
             </a>
-
           </div>
 
         </div>
-
       </section>
 
-
-      {/* =================================================
-          HOW IT WORKS
-      ================================================= */}
+      {/* HOW IT WORKS */}
 
       <section
         className="how-section"
         id="how-it-works"
       >
-
         <div className="section-heading">
-
           <div className="section-badge">
             ✦ How AENOVA works
           </div>
-
 
           <h2>
             From your profile to
@@ -2737,20 +1643,16 @@ function App() {
             </span>
           </h2>
 
-
           <p>
             AENOVA creates explainable
             recommendations instead of
             simply displaying a random list.
           </p>
-
         </div>
-
 
         <div className="steps-container">
 
           <div className="step-card">
-
             <div className="step-number">
               01
             </div>
@@ -2764,20 +1666,17 @@ function App() {
             </h3>
 
             <p>
-              Add your skills, interests,
-              and career goal.
+              Add your education, skills,
+              interests, location, and
+              career goal.
             </p>
-
           </div>
-
 
           <div className="step-connector">
             →
           </div>
 
-
           <div className="step-card">
-
             <div className="step-number">
               02
             </div>
@@ -2795,17 +1694,13 @@ function App() {
               profile signals from your
               information.
             </p>
-
           </div>
-
 
           <div className="step-connector">
             →
           </div>
 
-
           <div className="step-card">
-
             <div className="step-number">
               03
             </div>
@@ -2822,17 +1717,13 @@ function App() {
               Opportunities are scored
               according to profile relevance.
             </p>
-
           </div>
-
 
           <div className="step-connector">
             →
           </div>
 
-
           <div className="step-card">
-
             <div className="step-number">
               04
             </div>
@@ -2849,17 +1740,12 @@ function App() {
               Your feedback adjusts future
               recommendations.
             </p>
-
           </div>
 
         </div>
-
       </section>
 
-
-      {/* =================================================
-          AI RECOMMENDATIONS
-      ================================================= */}
+      {/* AI RECOMMENDATIONS */}
 
       <section
         className="opportunities-section"
@@ -2869,13 +1755,10 @@ function App() {
             "linear-gradient(180deg,#f8f8ff,#ffffff)",
         }}
       >
-
         <div className="section-heading">
-
           <div className="section-badge">
             ✦ AI Recommendation Engine
           </div>
-
 
           <h2>
             Opportunities selected
@@ -2884,65 +1767,38 @@ function App() {
             </span>
           </h2>
 
-
           <p>
             AENOVA compares your profile
-            with the available public
-            opportunity listings and
-            explains why each match may
-            be relevant.
+            with available opportunity
+            listings and explains why each
+            match may be relevant.
           </p>
-
         </div>
-
-
-        {/* RECOMMENDATION STATUS */}
 
         <div
           style={{
-            maxWidth:
-              "1050px",
-
-            margin:
-              "0 auto 25px",
-
-            display:
-              "grid",
-
+            maxWidth: "1050px",
+            margin: "0 auto 25px",
+            display: "grid",
             gridTemplateColumns:
               "repeat(3,1fr)",
-
-            gap:
-              "14px",
+            gap: "14px",
           }}
         >
-
           <div
             style={{
-              background:
-                "#fff",
-
+              background: "#fff",
               border:
                 "1px solid #e8e8f3",
-
-              borderRadius:
-                "14px",
-
-              padding:
-                "16px",
+              borderRadius: "14px",
+              padding: "16px",
             }}
           >
-
             <div
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#7b7c91",
-
-                fontWeight:
-                  "700",
+                fontSize: "11px",
+                color: "#7b7c91",
+                fontWeight: "700",
               }}
             >
               PROFILE SIGNALS
@@ -2950,17 +1806,10 @@ function App() {
 
             <strong
               style={{
-                display:
-                  "block",
-
-                fontSize:
-                  "22px",
-
-                color:
-                  "#5952d8",
-
-                marginTop:
-                  "4px",
+                display: "block",
+                fontSize: "22px",
+                color: "#5952d8",
+                marginTop: "4px",
               }}
             >
               {
@@ -2969,51 +1818,37 @@ function App() {
                 ).length +
                 uniqueWords(
                   profile.interests
+                ).length +
+                uniqueWords(
+                  profile.career_goal
                 ).length
               }
             </strong>
 
             <span
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#77788c",
+                fontSize: "11px",
+                color: "#77788c",
               }}
             >
-              skills + interests
+              skills + interests + career
             </span>
-
           </div>
-
 
           <div
             style={{
-              background:
-                "#fff",
-
+              background: "#fff",
               border:
                 "1px solid #e8e8f3",
-
-              borderRadius:
-                "14px",
-
-              padding:
-                "16px",
+              borderRadius: "14px",
+              padding: "16px",
             }}
           >
-
             <div
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#7b7c91",
-
-                fontWeight:
-                  "700",
+                fontSize: "11px",
+                color: "#7b7c91",
+                fontWeight: "700",
               }}
             >
               OPPORTUNITIES ANALYZED
@@ -3021,17 +1856,10 @@ function App() {
 
             <strong
               style={{
-                display:
-                  "block",
-
-                fontSize:
-                  "22px",
-
-                color:
-                  "#5952d8",
-
-                marginTop:
-                  "4px",
+                display: "block",
+                fontSize: "22px",
+                color: "#5952d8",
+                marginTop: "4px",
               }}
             >
               {opportunities.length}
@@ -3039,45 +1867,28 @@ function App() {
 
             <span
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#77788c",
+                fontSize: "11px",
+                color: "#77788c",
               }}
             >
               current listings
             </span>
-
           </div>
-
 
           <div
             style={{
-              background:
-                "#fff",
-
+              background: "#fff",
               border:
                 "1px solid #e8e8f3",
-
-              borderRadius:
-                "14px",
-
-              padding:
-                "16px",
+              borderRadius: "14px",
+              padding: "16px",
             }}
           >
-
             <div
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#7b7c91",
-
-                fontWeight:
-                  "700",
+                fontSize: "11px",
+                color: "#7b7c91",
+                fontWeight: "700",
               }}
             >
               FEEDBACK SIGNALS
@@ -3085,124 +1896,70 @@ function App() {
 
             <strong
               style={{
-                display:
-                  "block",
-
-                fontSize:
-                  "22px",
-
-                color:
-                  "#5952d8",
-
-                marginTop:
-                  "4px",
+                display: "block",
+                fontSize: "22px",
+                color: "#5952d8",
+                marginTop: "4px",
               }}
             >
-              {
-                Object.keys(
-                  feedback
-                ).length
-              }
+              {Object.keys(feedback).length}
             </strong>
 
             <span
               style={{
-                fontSize:
-                  "11px",
-
-                color:
-                  "#77788c",
+                fontSize: "11px",
+                color: "#77788c",
               }}
             >
               preferences learned
             </span>
-
           </div>
-
         </div>
-
-
-        {/* PROFILE WARNING */}
 
         {!profile.skills &&
           !profile.interests &&
           !profile.career_goal && (
-
             <div
               style={{
-                maxWidth:
-                  "1050px",
-
-                margin:
-                  "0 auto 22px",
-
-                background:
-                  "#f2f1ff",
-
+                maxWidth: "1050px",
+                margin: "0 auto 22px",
+                background: "#f2f1ff",
                 border:
                   "1px solid #ddd9ff",
-
-                borderRadius:
-                  "13px",
-
-                padding:
-                  "14px 17px",
-
-                color:
-                  "#5049bd",
-
-                fontSize:
-                  "13px",
+                borderRadius: "13px",
+                padding: "14px 17px",
+                color: "#5049bd",
+                fontSize: "13px",
               }}
             >
-
-              💡 <strong>
+              💡{" "}
+              <strong>
                 Complete your profile
               </strong>{" "}
               to get more personalized
               recommendations.
-
               {" "}
-
               <a
                 href="#profile"
                 style={{
-                  color:
-                    "#4f47d0",
-
-                  fontWeight:
-                    "800",
+                  color: "#4f47d0",
+                  fontWeight: "800",
                 }}
               >
                 Complete profile →
               </a>
-
             </div>
-
           )}
-
-
-        {/* RECOMMENDATION TABS */}
 
         <div
           style={{
-            display:
-              "flex",
-
-            justifyContent:
-              "center",
-
-            gap:
-              "8px",
-
-            marginBottom:
-              "22px",
-
-            flexWrap:
-              "wrap",
+            display: "flex",
+            justifyContent: "center",
+            gap: "8px",
+            marginBottom: "22px",
+            flexWrap: "wrap",
           }}
         >
-
           <button
             type="button"
             onClick={() =>
@@ -3211,27 +1968,16 @@ function App() {
               )
             }
             style={{
-              border:
-                "none",
-
-              borderRadius:
-                "999px",
-
-              padding:
-                "9px 15px",
-
-              cursor:
-                "pointer",
-
-              fontWeight:
-                "700",
-
+              border: "none",
+              borderRadius: "999px",
+              padding: "9px 15px",
+              cursor: "pointer",
+              fontWeight: "700",
               background:
                 recommendationMode ===
                 "recommended"
                   ? "#5d55df"
                   : "#eeeeF8",
-
               color:
                 recommendationMode ===
                 "recommended"
@@ -3242,7 +1988,6 @@ function App() {
             ✦ Recommended
           </button>
 
-
           <button
             type="button"
             onClick={() =>
@@ -3251,27 +1996,16 @@ function App() {
               )
             }
             style={{
-              border:
-                "none",
-
-              borderRadius:
-                "999px",
-
-              padding:
-                "9px 15px",
-
-              cursor:
-                "pointer",
-
-              fontWeight:
-                "700",
-
+              border: "none",
+              borderRadius: "999px",
+              padding: "9px 15px",
+              cursor: "pointer",
+              fontWeight: "700",
               background:
                 recommendationMode ===
                 "all"
                   ? "#5d55df"
                   : "#eeeeF8",
-
               color:
                 recommendationMode ===
                 "all"
@@ -3281,16 +2015,10 @@ function App() {
           >
             All analyzed
           </button>
-
         </div>
 
-
-        {/* RECOMMENDATION CARDS */}
-
         {loadingOpportunities ? (
-
           <div className="empty-opportunities">
-
             <h3>
               Analyzing opportunities...
             </h3>
@@ -3299,30 +2027,18 @@ function App() {
               AENOVA is preparing your
               personalized matches.
             </p>
-
           </div>
-
         ) : (
-
           <div
             style={{
-              maxWidth:
-                "1050px",
-
-              margin:
-                "0 auto",
-
-              display:
-                "grid",
-
+              maxWidth: "1050px",
+              margin: "0 auto",
+              display: "grid",
               gridTemplateColumns:
                 "repeat(auto-fit,minmax(290px,1fr))",
-
-              gap:
-                "18px",
+              gap: "18px",
             }}
           >
-
             {(recommendationMode ===
             "recommended"
               ? topRecommendations
@@ -3332,67 +2048,45 @@ function App() {
                 )
             ).map(
               (item, index) => (
-
                 <RecommendationCard
                   key={
                     item.opportunity.id ||
                     item.opportunity.title ||
                     index
                   }
-                  item={
-                    item
-                  }
+                  item={item}
                   featured={
-                    index ===
-                    0
+                    index === 0
                   }
                 />
-
               )
             )}
-
           </div>
-
         )}
-
 
         {!loadingOpportunities &&
           topRecommendations.length ===
             0 && (
-
             <div
               style={{
-                maxWidth:
-                  "700px",
-
-                margin:
-                  "0 auto",
-
-                textAlign:
-                  "center",
-
-                padding:
-                  "35px 20px",
-
-                background:
-                  "#fff",
-
-                borderRadius:
-                  "18px",
-
+                maxWidth: "700px",
+                margin: "20px auto 0",
+                textAlign: "center",
+                padding: "35px 20px",
+                background: "#fff",
+                borderRadius: "18px",
                 border:
                   "1px solid #e8e8f3",
               }}
             >
-
               <h3>
-                Build your profile for better matches
+                Build your profile for
+                better matches
               </h3>
 
               <p
                 style={{
-                  color:
-                    "#77788c",
+                  color: "#77788c",
                 }}
               >
                 Add your skills, interests,
@@ -3413,29 +2107,20 @@ function App() {
               >
                 Complete My Profile →
               </a>
-
             </div>
-
           )}
-
       </section>
 
-
-      {/* =================================================
-          ALL OPPORTUNITIES
-      ================================================= */}
+      {/* ALL OPPORTUNITIES */}
 
       <section
         className="opportunities-section"
         id="opportunities"
       >
-
         <div className="section-heading">
-
           <div className="section-badge">
             ✦ Explore opportunities
           </div>
-
 
           <h2>
             Browse the
@@ -3444,71 +2129,54 @@ function App() {
             </span>
           </h2>
 
-
           <p>
             These are public opportunity
             listings currently collected by
             AENOVA.
           </p>
-
         </div>
 
-
         <div className="opportunity-tabs">
-
           {[
             "All",
             "Hackathon",
             "Internship",
             "Workshop",
             "Competition",
-          ].map(
-            (category) => (
-
-              <button
-                key={category}
-                type="button"
-                className={
-                  selectedCategory ===
+          ].map((category) => (
+            <button
+              key={category}
+              type="button"
+              className={
+                selectedCategory ===
+                category
+                  ? "active-tab"
+                  : ""
+              }
+              onClick={() =>
+                setSelectedCategory(
                   category
-                    ? "active-tab"
-                    : ""
-                }
-                onClick={() =>
-                  setSelectedCategory(
-                    category
-                  )
-                }
-              >
-
-                {category ===
-                "All"
-                  ? "All"
-                  : category ===
-                    "Hackathon"
-                  ? "Hackathons"
-                  : category ===
-                    "Internship"
-                  ? "Internships"
-                  : category ===
-                    "Workshop"
-                  ? "Workshops"
-                  : "Competitions"}
-
-              </button>
-
-            )
-          )}
-
+                )
+              }
+            >
+              {category === "All"
+                ? "All"
+                : category === "Hackathon"
+                ? "Hackathons"
+                : category ===
+                  "Internship"
+                ? "Internships"
+                : category ===
+                  "Workshop"
+                ? "Workshops"
+                : "Competitions"}
+            </button>
+          ))}
         </div>
 
-
         <div className="opportunities-grid">
-
           {loadingOpportunities ? (
-
             <div className="empty-opportunities">
-
               <h3>
                 Finding current opportunities...
               </h3>
@@ -3517,14 +2185,10 @@ function App() {
                 AENOVA is loading public
                 opportunity listings.
               </p>
-
             </div>
-
           ) : filteredOpportunities.length ===
             0 ? (
-
             <div className="empty-opportunities">
-
               <h3>
                 No opportunities found
               </h3>
@@ -3534,17 +2198,10 @@ function App() {
                 listings available for
                 this category.
               </p>
-
             </div>
-
           ) : (
-
             filteredOpportunities.map(
-              (
-                opportunity,
-                index
-              ) => (
-
+              (opportunity, index) => (
                 <div
                   className="opportunity-card"
                   key={
@@ -3552,60 +2209,48 @@ function App() {
                     `${opportunity.title}-${index}`
                   }
                 >
-
                   <div className="opportunity-top">
-
                     <span className="opportunity-type blue-type">
                       {opportunity.category ||
                         "Opportunity"}
                     </span>
-
 
                     <span
                       className="demo-label"
                       style={{
                         background:
                           "#e8f8f3",
-
-                        color:
-                          "#16816f",
+                        color: "#16816f",
                       }}
                     >
                       LIVE ·{" "}
                       {opportunity.source ||
                         "PUBLIC"}
                     </span>
-
                   </div>
-
 
                   <h3>
                     {opportunity.title ||
                       "Opportunity"}
                   </h3>
 
-
                   <p>
                     {opportunity.description ||
                       "See the official listing for complete details."}
                   </p>
 
-
                   <div className="opportunity-details">
-
                     <span>
                       📍{" "}
                       {opportunity.location ||
                         "See official listing"}
                     </span>
 
-
                     <span>
                       🏢{" "}
                       {opportunity.organization ||
                         "See official listing"}
                     </span>
-
 
                     {opportunity.deadline && (
                       <span>
@@ -3614,19 +2259,15 @@ function App() {
                       </span>
                     )}
 
-
                     {opportunity.event_date && (
                       <span>
                         🗓 Event:{" "}
                         {opportunity.event_date}
                       </span>
                     )}
-
                   </div>
 
-
                   {opportunity.url ? (
-
                     <a
                       href={
                         opportunity.url
@@ -3635,21 +2276,15 @@ function App() {
                       rel="noopener noreferrer"
                       className="view-button"
                       style={{
-                        display:
-                          "block",
-
-                        textAlign:
-                          "center",
-
+                        display: "block",
+                        textAlign: "center",
                         textDecoration:
                           "none",
                       }}
                     >
                       View Official Listing →
                     </a>
-
                   ) : (
-
                     <button
                       type="button"
                       className="view-button"
@@ -3657,36 +2292,26 @@ function App() {
                     >
                       Official listing unavailable
                     </button>
-
                   )}
-
                 </div>
-
               )
             )
-
           )}
-
         </div>
-
       </section>
 
-
       {/* =================================================
-          STUDENT PROFILE
-      ================================================= */}
+          EXPANDED STUDENT PROFILE
+          ================================================= */}
 
       <section
         className="profile-section"
         id="profile"
       >
-
         <div className="section-heading">
-
           <span className="section-badge">
             ✦ Student Profile
           </span>
-
 
           <h2>
             Tell AENOVA about
@@ -3695,91 +2320,511 @@ function App() {
             </span>
           </h2>
 
-
           <p>
-            Your profile powers the
-            recommendation engine.
+            Build a richer profile so AENOVA
+            can understand your education,
+            skills, interests, career direction,
+            location, and opportunity preferences.
           </p>
-
         </div>
 
+        <div
+          className="profile-form"
+          style={{
+            maxWidth: "920px",
+            margin: "0 auto",
+          }}
+        >
 
-        <div className="profile-form">
+          {/* BASIC INFORMATION */}
 
-          <input
-            type="text"
-            placeholder="Full name"
-            value={
-              profile.full_name
-            }
-            onChange={(event) =>
-              updateProfile(
-                "full_name",
-                event.target.value
-              )
-            }
-          />
+          <div
+            style={{
+              marginBottom: "12px",
+              fontSize: "12px",
+              fontWeight: "800",
+              color: "#5b55d9",
+              textTransform: "uppercase",
+            }}
+          >
+            👤 Basic information
+          </div>
 
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(260px,1fr))",
+              gap: "14px",
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Full name *"
+              value={
+                profile.full_name
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "full_name",
+                  event.target.value
+                )
+              }
+            />
 
-          <input
-            type="email"
-            placeholder="Email address"
-            value={
-              profile.email
-            }
-            onChange={(event) =>
-              updateProfile(
-                "email",
-                event.target.value
-              )
-            }
-          />
+            <input
+              type="email"
+              placeholder="Email address *"
+              value={profile.email}
+              onChange={(event) =>
+                updateProfile(
+                  "email",
+                  event.target.value
+                )
+              }
+            />
 
+            <input
+              type="text"
+              placeholder="College / University"
+              value={
+                profile.college
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "college",
+                  event.target.value
+                )
+              }
+            />
 
-          <input
-            type="text"
-            placeholder="Skills (e.g. Python, AI, SQL)"
-            value={
-              profile.skills
-            }
-            onChange={(event) =>
-              updateProfile(
-                "skills",
-                event.target.value
-              )
-            }
-          />
+            <input
+              type="text"
+              placeholder="Course (e.g. B.Tech CSE, B.Com)"
+              value={
+                profile.course
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "course",
+                  event.target.value
+                )
+              }
+            />
 
+            <select
+              value={
+                profile.study_year
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "study_year",
+                  event.target.value
+                )
+              }
+              style={{
+                width: "100%",
+                padding:
+                  "13px 14px",
+                border:
+                  "1px solid #e4e4ef",
+                borderRadius:
+                  "10px",
+                background:
+                  "#fff",
+                color:
+                  profile.study_year
+                    ? "#25263e"
+                    : "#88899c",
+                fontSize:
+                  "14px",
+                outline:
+                  "none",
+              }}
+            >
+              <option value="">
+                Study year
+              </option>
 
-          <input
-            type="text"
-            placeholder="Interests (e.g. AI, Data Science)"
-            value={
-              profile.interests
-            }
-            onChange={(event) =>
-              updateProfile(
-                "interests",
-                event.target.value
-              )
-            }
-          />
+              <option value="1st Year">
+                1st Year
+              </option>
 
+              <option value="2nd Year">
+                2nd Year
+              </option>
 
-          <input
-            type="text"
-            placeholder="Career goal (e.g. AI Engineer)"
-            value={
-              profile.career_goal
-            }
-            onChange={(event) =>
-              updateProfile(
-                "career_goal",
-                event.target.value
-              )
-            }
-          />
+              <option value="3rd Year">
+                3rd Year
+              </option>
 
+              <option value="4th Year">
+                4th Year
+              </option>
+
+              <option value="5th Year">
+                5th Year
+              </option>
+
+              <option value="Postgraduate">
+                Postgraduate
+              </option>
+
+              <option value="Graduate">
+                Graduate
+              </option>
+
+              <option value="Working Professional">
+                Working Professional
+              </option>
+            </select>
+
+            <input
+              type="text"
+              placeholder="Current location (e.g. Chennai, Tamil Nadu)"
+              value={
+                profile.location
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "location",
+                  event.target.value
+                )
+              }
+            />
+          </div>
+
+          {/* SKILLS */}
+
+          <div
+            style={{
+              marginTop: "22px",
+              marginBottom: "12px",
+              fontSize: "12px",
+              fontWeight: "800",
+              color: "#5b55d9",
+              textTransform: "uppercase",
+            }}
+          >
+            🧠 Skills & career
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "repeat(auto-fit,minmax(260px,1fr))",
+              gap: "14px",
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Skills (e.g. Python, AI, SQL)"
+              value={
+                profile.skills
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "skills",
+                  event.target.value
+                )
+              }
+            />
+
+            <input
+              type="text"
+              placeholder="Interests (e.g. AI, Data Science)"
+              value={
+                profile.interests
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "interests",
+                  event.target.value
+                )
+              }
+            />
+
+            <input
+              type="text"
+              placeholder="Career goal (e.g. AI Engineer)"
+              value={
+                profile.career_goal
+              }
+              onChange={(event) =>
+                updateProfile(
+                  "career_goal",
+                  event.target.value
+                )
+              }
+            />
+          </div>
+
+          {/* LOCATION */}
+
+          <div
+            style={{
+              marginTop: "22px",
+              padding: "18px",
+              background:
+                "#f7f6ff",
+              border:
+                "1px solid #e4e0ff",
+              borderRadius:
+                "14px",
+            }}
+          >
+            <h3
+              style={{
+                margin:
+                  "0 0 5px",
+                color:
+                  "#262743",
+                fontSize:
+                  "16px",
+              }}
+            >
+              📍 Opportunity preferences
+            </h3>
+
+            <p
+              style={{
+                margin:
+                  "0 0 14px",
+                color:
+                  "#74758a",
+                fontSize:
+                  "12px",
+                lineHeight:
+                  "1.5",
+              }}
+            >
+              Choose where you want
+              AENOVA to focus your
+              opportunity discovery.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(220px,1fr))",
+                gap: "12px",
+              }}
+            >
+              <select
+                value={
+                  profile.preferred_scope
+                }
+                onChange={(event) =>
+                  updateProfile(
+                    "preferred_scope",
+                    event.target.value
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding:
+                    "13px 14px",
+                  border:
+                    "1px solid #e4e4ef",
+                  borderRadius:
+                    "10px",
+                  background:
+                    "#fff",
+                  color:
+                    "#25263e",
+                  fontSize:
+                    "14px",
+                  outline:
+                    "none",
+                }}
+              >
+                <option value="Tamil Nadu">
+                  Tamil Nadu
+                </option>
+
+                <option value="Anywhere in India">
+                  Anywhere in India
+                </option>
+
+                <option value="Online">
+                  Online
+                </option>
+              </select>
+
+              <input
+                type="text"
+                placeholder="Preferred cities (e.g. Chennai, Coimbatore)"
+                value={
+                  profile.preferred_cities
+                }
+                onChange={(event) =>
+                  updateProfile(
+                    "preferred_cities",
+                    event.target.value
+                  )
+                }
+              />
+            </div>
+          </div>
+
+          {/* EMAIL ALERTS */}
+
+          <div
+            style={{
+              marginTop: "16px",
+              padding: "18px",
+              background:
+                "#ffffff",
+              border:
+                "1px solid #e7e7f3",
+              borderRadius:
+                "14px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems:
+                  "center",
+                justifyContent:
+                  "space-between",
+                gap: "14px",
+                flexWrap:
+                  "wrap",
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin:
+                      "0 0 4px",
+                    color:
+                      "#262743",
+                    fontSize:
+                      "16px",
+                  }}
+                >
+                  📧 Email opportunity alerts
+                </h3>
+
+                <p
+                  style={{
+                    margin: 0,
+                    color:
+                      "#74758a",
+                    fontSize:
+                      "12px",
+                    lineHeight:
+                      "1.5",
+                  }}
+                >
+                  Choose whether
+                  AENOVA may send
+                  relevant opportunity
+                  notifications to your
+                  email.
+                </p>
+              </div>
+
+              <label
+                style={{
+                  display: "flex",
+                  alignItems:
+                    "center",
+                  gap: "8px",
+                  cursor:
+                    "pointer",
+                  fontSize:
+                    "13px",
+                  fontWeight:
+                    "700",
+                  color:
+                    "#4f49c8",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    profile.notification_enabled
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "notification_enabled",
+                      event.target.checked
+                    )
+                  }
+                />
+
+                Enable alerts
+              </label>
+            </div>
+
+            {profile.notification_enabled && (
+              <div
+                style={{
+                  marginTop:
+                    "15px",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit,minmax(220px,1fr))",
+                  gap: "12px",
+                }}
+              >
+                <input
+                  type="text"
+                  placeholder="Categories (e.g. Internships, Scholarships, Hackathons)"
+                  value={
+                    profile.notification_categories
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "notification_categories",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <select
+                  value={
+                    profile.notification_frequency
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "notification_frequency",
+                      event.target.value
+                    )
+                  }
+                  style={{
+                    width: "100%",
+                    padding:
+                      "13px 14px",
+                    border:
+                      "1px solid #e4e4ef",
+                    borderRadius:
+                      "10px",
+                    background:
+                      "#fff",
+                    color:
+                      "#25263e",
+                    fontSize:
+                      "14px",
+                    outline:
+                      "none",
+                  }}
+                >
+                  <option value="daily">
+                    Daily digest
+                  </option>
+
+                  <option value="weekly">
+                    Weekly digest
+                  </option>
+                </select>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"
@@ -3789,43 +2834,34 @@ function App() {
             disabled={
               savingProfile
             }
+            style={{
+              marginTop:
+                "18px",
+            }}
           >
-
             {savingProfile
               ? "Saving..."
-              : "Save My Profile →"}
-
+              : "Save My AENOVA Profile →"}
           </button>
 
-
           {profileMessage && (
-
             <div className="profile-message">
               {profileMessage}
             </div>
-
           )}
-
         </div>
-
       </section>
 
-
-      {/* =================================================
-          ANEBESTRA
-      ================================================= */}
+      {/* ANEBESTRA */}
 
       <section
         className="assistant-section"
         id="assistant"
       >
-
         <div className="assistant-content">
-
           <div className="section-badge">
             ✦ Meet ANEBESTRA
           </div>
-
 
           <h2>
             Your AI assistant for
@@ -3834,7 +2870,6 @@ function App() {
             </span>
           </h2>
 
-
           <p>
             Ask ANEBESTRA about learning,
             programming, AI, careers,
@@ -3842,7 +2877,6 @@ function App() {
             interviews, skills, or simply
             talk through your next step.
           </p>
-
 
           <button
             type="button"
@@ -3857,24 +2891,16 @@ function App() {
           >
             Talk to ANEBESTRA →
           </button>
-
         </div>
-
 
         <div className="assistant-card">
 
-
-          {/* HEADER */}
-
           <div className="assistant-header">
-
             <div className="assistant-avatar">
               ✦
             </div>
 
-
             <div>
-
               <h3>
                 ANEBESTRA
               </h3>
@@ -3882,68 +2908,46 @@ function App() {
               <span>
                 AI Student Assistant
               </span>
-
             </div>
-
           </div>
-
-
-          {/* NEW CHAT */}
 
           <div
             style={{
-              display:
-                "flex",
-
+              display: "flex",
               justifyContent:
                 "flex-end",
-
               marginTop:
                 "10px",
-
               marginBottom:
                 "4px",
             }}
           >
-
             <button
               type="button"
               onClick={
                 startNewChat
               }
               style={{
-                border:
-                  "none",
-
+                border: "none",
                 background:
                   "transparent",
-
                 color:
                   "#6558e8",
-
                 fontSize:
                   "12px",
-
                 fontWeight:
                   "700",
-
                 cursor:
                   "pointer",
               }}
             >
               + New chat
             </button>
-
           </div>
 
-
-          {/* MESSAGES */}
-
           <div className="chat-messages">
-
             {messages.map(
               (message) => (
-
                 <div
                   key={
                     message.id
@@ -3960,48 +2964,34 @@ function App() {
                       ? {
                           background:
                             "linear-gradient(135deg,#4d6df5,#7651ed)",
-
                           color:
                             "#ffffff",
-
                           marginLeft:
                             "64px",
-
                           marginRight:
                             "0",
-
                           borderRadius:
                             "16px 16px 5px 16px",
-
                           padding:
                             "12px 16px",
-
                           textAlign:
                             "left",
-
                           fontWeight:
                             "600",
-
                           boxShadow:
                             "0 6px 18px rgba(80,80,220,0.15)",
-
                           wordBreak:
                             "break-word",
                         }
                       : undefined
                   }
                 >
-
                   {message.isThinking ? (
-
                     <div
                       style={{
                         display:
                           "flex",
-
-                        gap:
-                          "8px",
-
+                        gap: "8px",
                         alignItems:
                           "center",
                       }}
@@ -4014,63 +3004,44 @@ function App() {
                         •••
                       </span>
                     </div>
-
                   ) : message.sender ===
                     "bot" ? (
-
                     <div
                       style={{
                         lineHeight:
                           "1.6",
-
                         textAlign:
                           "left",
-
                         width:
                           "100%",
-
                         wordBreak:
                           "break-word",
                       }}
                     >
-
                       {renderAIText(
                         message.text
                       )}
-
                     </div>
-
                   ) : (
-
                     <div
                       style={{
                         lineHeight:
                           "1.5",
-
                         whiteSpace:
                           "pre-wrap",
-
                         wordBreak:
                           "break-word",
                       }}
                     >
                       {message.text}
                     </div>
-
                   )}
-
                 </div>
-
               )
             )}
-
           </div>
 
-
-          {/* INPUT */}
-
           <div className="chat-input">
-
             <input
               id="assistant-chat"
               type="text"
@@ -4092,7 +3063,6 @@ function App() {
               autoComplete="off"
             />
 
-
             <button
               type="button"
               onClick={
@@ -4107,54 +3077,40 @@ function App() {
                 ? "..."
                 : "→"}
             </button>
-
           </div>
-
         </div>
-
       </section>
 
-
-      {/* =================================================
-          FINAL CTA
-      ================================================= */}
+      {/* FINAL CTA */}
 
       <section
         style={{
           padding:
             "75px 20px",
-
           background:
             "linear-gradient(135deg,#edf0ff,#f7f3ff)",
-
           textAlign:
             "center",
         }}
       >
-
         <div
           style={{
             maxWidth:
               "750px",
-
             margin:
               "0 auto",
           }}
         >
-
           <div className="section-badge">
             ✦ Your next step starts here
           </div>
-
 
           <h2
             style={{
               fontSize:
                 "clamp(30px,5vw,48px)",
-
               color:
                 "#171934",
-
               margin:
                 "12px 0",
             }}
@@ -4171,18 +3127,14 @@ function App() {
             {" "}Grow.
           </h2>
 
-
           <p
             style={{
               color:
                 "#66687d",
-
               lineHeight:
                 "1.7",
-
               maxWidth:
                 "600px",
-
               margin:
                 "0 auto 25px",
             }}
@@ -4194,58 +3146,44 @@ function App() {
             guidance.
           </p>
 
-
           <a
             href="#recommendations"
             className="primary-button"
             style={{
               display:
                 "inline-block",
-
               textDecoration:
                 "none",
             }}
           >
             See My Recommendations →
           </a>
-
         </div>
-
       </section>
 
-
-      {/* =================================================
-          FOOTER
-      ================================================= */}
+      {/* FOOTER */}
 
       <footer className="footer">
-
         <div className="footer-logo">
-
           <img
             src={AENOVALogo}
             alt="AENOVA"
             className="aenova-logo"
           />
-
         </div>
-
 
         <p>
           Discover · Learn · Grow
         </p>
 
-
         <span>
           AENOVA — AI-powered opportunity
           discovery for students.
         </span>
-
       </footer>
 
     </div>
   );
 }
-
 
 export default App;
