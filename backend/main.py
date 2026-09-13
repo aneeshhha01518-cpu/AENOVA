@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+import hashlib
 import os
 import re
 import time
 import threading
+import uuid
 from typing import Optional
 
 import requests
@@ -53,7 +57,7 @@ MAX_HISTORY_MESSAGES = 30
 app = FastAPI(
     title="AENOVA API",
     description="Backend API for AENOVA and ANEBESTRA",
-    version="4.1.0"
+    version="5.0.0"
 )
 
 app.add_middleware(
@@ -75,6 +79,9 @@ OPPORTUNITY_CACHE = {
 }
 
 CACHE_SECONDS = 300
+OPPORTUNITY_CACHE_LOCK = threading.Lock()
+PROFILE_LOCKS = {}
+PROFILE_LOCKS_GUARD = threading.Lock()
 
 
 # ============================================================
@@ -83,6 +90,30 @@ CACHE_SECONDS = 300
 
 SESSION_LOCKS = {}
 SESSION_LOCKS_GUARD = threading.Lock()
+
+
+def get_profile_lock(profile_key: str):
+    with PROFILE_LOCKS_GUARD:
+        if profile_key not in PROFILE_LOCKS:
+            PROFILE_LOCKS[profile_key] = threading.Lock()
+        return PROFILE_LOCKS[profile_key]
+
+
+def stable_session_key(request: ChatRequest):
+    """Prevent the shared `default` session from mixing users."""
+    supplied = clean_text(request.session_id)
+    if supplied and supplied != "default":
+        return supplied
+
+    profile = request.profile or {}
+    email = clean_text(profile.get("email"))
+    if email:
+        digest = hashlib.sha256(email.lower().encode("utf-8")).hexdigest()[:32]
+        return f"profile-{digest}"
+
+    # A missing session id should create an isolated session rather than
+    # putting unrelated users into one global chat history.
+    return f"anonymous-{uuid.uuid4().hex}"
 
 
 def get_session_lock(session_key: str):
@@ -508,45 +539,42 @@ def store_all_opportunities(opportunities):
 # ============================================================
 
 def get_cached_opportunities():
+    """Return one shared live snapshot per cache window.
 
+    Only one request refreshes the external sources when the cache expires;
+    concurrent users reuse the same refreshed snapshot.
+    """
     now = time.time()
 
     if (
         OPPORTUNITY_CACHE["data"]
-        and
-        now - OPPORTUNITY_CACHE["timestamp"]
-        < CACHE_SECONDS
+        and now - OPPORTUNITY_CACHE["timestamp"] < CACHE_SECONDS
     ):
         return OPPORTUNITY_CACHE["data"]
 
-    try:
+    with OPPORTUNITY_CACHE_LOCK:
+        now = time.time()
+        if (
+            OPPORTUNITY_CACHE["data"]
+            and now - OPPORTUNITY_CACHE["timestamp"] < CACHE_SECONDS
+        ):
+            return OPPORTUNITY_CACHE["data"]
 
-        opportunities = get_live_opportunities()
+        try:
+            opportunities = get_live_opportunities()
+            if not isinstance(opportunities, list):
+                opportunities = []
 
-        if not isinstance(opportunities, list):
-            opportunities = []
+            opportunities = store_all_opportunities(opportunities)
+            OPPORTUNITY_CACHE["data"] = opportunities
+            OPPORTUNITY_CACHE["timestamp"] = time.time()
 
-        opportunities = store_all_opportunities(
-            opportunities
-        )
+            print(f"Stored {len(opportunities)} live opportunities.")
+            return opportunities
 
-        OPPORTUNITY_CACHE["data"] = opportunities
-        OPPORTUNITY_CACHE["timestamp"] = now
-
-        print(
-            f"Stored {len(opportunities)} live opportunities."
-        )
-
-        return opportunities
-
-    except Exception as error:
-
-        print(
-            "Opportunity collector error:",
-            error
-        )
-
-        return OPPORTUNITY_CACHE["data"]
+        except Exception as error:
+            print("Opportunity collector error:", error)
+            return OPPORTUNITY_CACHE["data"]
 
 
 # ============================================================
@@ -1844,7 +1872,7 @@ def root():
         "assistant":
             "ANEBESTRA",
         "version":
-            "4.1.0"
+            "5.0.0"
     }
 
 
@@ -2029,25 +2057,21 @@ def save_profile(
 
         profile_id = profile_row["id"]
 
-        # ----------------------------------------------------
-        # Get current real public opportunities.
-        # ----------------------------------------------------
+        # Serialize recommendation rebuilds for the same profile so two
+        # browser requests cannot delete/insert the same rows concurrently.
+        profile_lock = get_profile_lock(str(profile_id))
 
-        live_opportunities = (
-            get_cached_opportunities()
-        )
-
-        # ----------------------------------------------------
-        # Generate personalized recommendations.
-        # ----------------------------------------------------
-
-        recommendation_rows = (
-            save_profile_recommendations(
+        with profile_lock:
+            live_opportunities = get_cached_opportunities()
+            recommendation_rows = save_profile_recommendations(
                 profile_id,
                 data,
                 live_opportunities
             )
-        )
+
+        # ----------------------------------------------------
+        # Profile activity is recorded after the recommendation rebuild.
+        # ----------------------------------------------------
 
         save_activity(
             profile_id=profile_id,
@@ -2209,9 +2233,7 @@ def chat_endpoint(
         request.message
     )
 
-    session_key = clean_text(
-        request.session_id
-    ) or "default"
+    session_key = stable_session_key(request)
 
     if not message:
 
@@ -2616,5 +2638,5 @@ def health():
         "recommendation_storage": True,
         "all_departments": True,
         "india_opportunities": True,
-        "version": "4.1.0"
+        "version": "5.0.0"
     }
