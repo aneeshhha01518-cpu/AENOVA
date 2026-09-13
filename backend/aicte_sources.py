@@ -2,9 +2,13 @@
 AENOVA - AICTE National Internship Portal connector.
 
 Uses only public AICTE pages:
-- corporate_work.php (current searchable public internship listing)
-- fetch_city.php (legacy city listing fallback)
+- /internships (current public portal page)
+- fetch_city.php (public city listing pages)
 - official internship detail pages
+
+The current /internships page is client-rendered, and some older listing
+routes can return 404 depending on the AICTE deployment. Therefore the
+connector does not depend on corporate_work.php.
 
 No fake listings are generated.
 """
@@ -23,7 +27,6 @@ from bs4 import BeautifulSoup
 
 
 BASE = "https://internship.aicte-india.org"
-LISTING_URL = f"{BASE}/corporate_work.php"
 CITY_URL = f"{BASE}/fetch_city.php"
 SOURCE = "AICTE National Internship Portal"
 TIMEOUT = 25
@@ -429,90 +432,104 @@ def parse_detail(url: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def city_links(city: str) -> List[str]:
-    # AICTE's legacy endpoint uses Base64 in the indexed URLs.
-    encoded = base64.b64encode(
-        city.encode("utf-8")
-    ).decode("ascii")
+def city_links(city: str, page: int = 1) -> List[str]:
+    """
+    Fetch one public AICTE city listing page.
 
-    r = get(
-        CITY_URL,
-        params={"city": encoded, "page": 1},
-    )
-    if r is None:
-        return []
+    AICTE currently exposes both plain-city and base64-style public URLs.
+    The plain-city form is tried first because it is currently returning
+    server-rendered listing cards reliably.
+    """
+    candidates = [
+        {"city": city, "page": page},
+    ]
 
-    # If AICTE redirected to the new generic portal, this response
-    # is not a city listing.
-    if urlparse(r.url).path.rstrip("/") == "/internships":
-        return []
+    encoded = base64.b64encode(city.encode("utf-8")).decode("ascii")
+    candidates.append({"city": encoded, "page": page})
 
-    return detail_links(r.text)
-
-
-def get_aicte_opportunities(
-    max_pages: int = 1,
-    max_results: int = 120,
-) -> List[Dict[str, Any]]:
-    print("[AICTE] Starting official AICTE connector")
-
-    links: List[str] = []
-
-    # ---------------------------------------------------------
-    # PRIMARY: current public searchable listing.
-    # ---------------------------------------------------------
-    # Use a few pages because the public listing is paginated.
-    for page in range(1, max(2, min(max_pages + 1, 4))):
-        r = get(
-            LISTING_URL,
-            params={"page": page, "search": ""},
-        )
+    for params in candidates:
+        r = get(CITY_URL, params=params)
         if r is None:
             continue
 
-        found = detail_links(r.text)
+        final_path = urlparse(r.url).path.lower()
+        if final_path.rstrip("/") == "/internships":
+            continue
+
+        links = detail_links(r.text)
+
+        # Helpful diagnostics in Render logs. This lets us distinguish
+        # "no listings" from a page/HTML change without guessing.
         print(
-            f"[AICTE] corporate_work.php page {page}: "
-            f"{len(found)} detail links"
+            f"[AICTE] city={city!r} page={page} "
+            f"status={r.status_code} bytes={len(r.text)} "
+            f"detail_links={len(links)}"
         )
-        links.extend(found)
 
-        if len(links) >= max_results:
-            break
+        if links:
+            return links
 
-    # ---------------------------------------------------------
-    # FALLBACK: city listing pages.
-    # ---------------------------------------------------------
-    if len(links) < max_results:
-        print("[AICTE] Falling back to public city listings")
+    return []
 
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {
-                executor.submit(city_links, city): city
-                for city in CITIES
-            }
 
-            for future in as_completed(futures):
-                try:
-                    links.extend(future.result())
-                except Exception as exc:
+def get_aicte_opportunities(
+    max_pages: int = 2,
+    max_results: int = 120,
+) -> List[Dict[str, Any]]:
+    print("[AICTE] Starting official AICTE connector")
+    print("[AICTE] Using public AICTE city listings because the current")
+    print("[AICTE] /internships page is client-rendered")
+
+    # We intentionally use a broad set of cities rather than claiming that
+    # one city represents India. Pan-India listings are often repeated on
+    # these pages, and the final URL dedupe removes those duplicates.
+    # Pages are kept small to avoid hammering the official portal.
+    cities = CITIES[:]
+
+    links: List[str] = []
+    target_link_count = max(max_results * 2, 80)
+
+    # Fetch public city pages concurrently. Two pages per city gives us
+    # substantially more coverage while remaining bounded.
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {}
+
+        for city in cities:
+            for page in range(1, max(2, min(max_pages + 1, 3))):
+                future = executor.submit(city_links, city, page)
+                futures[future] = (city, page)
+
+        for future in as_completed(futures):
+            city, page = futures[future]
+            try:
+                found = future.result()
+                links.extend(found)
+                if found:
                     print(
-                        f"[AICTE] city failed "
-                        f"{futures[future]}: {exc}"
+                        f"[AICTE] {city} page {page}: "
+                        f"{len(found)} official detail links"
                     )
+            except Exception as exc:
+                print(
+                    f"[AICTE] city page failed "
+                    f"{city} page {page}: {exc}"
+                )
 
-                if len(set(links)) >= max_results * 2:
-                    break
+            # We cannot cancel already-running HTTP requests, but we can
+            # stop collecting once enough candidate URLs have been found.
+            if len(set(links)) >= target_link_count:
+                break
 
-    # Deduplicate.
+    # Deduplicate candidate detail URLs before opening them.
     unique = []
     seen = set()
     for url in links:
         key = url.rstrip("/").lower()
-        if key not in seen:
+        if key not in seen and is_detail(url):
             seen.add(key)
             unique.append(url)
 
+    # Keep the detail fetch bounded.
     unique = unique[:max_results]
 
     print(
@@ -535,17 +552,21 @@ def get_aicte_opportunities(
             except Exception as exc:
                 print(f"[AICTE] detail parse failed: {exc}")
 
-    # Final URL/title dedupe.
+    # Final URL/title dedupe and validation.
     final = []
     seen = set()
+
     for item in results:
         url = text(item.get("url"))
         title = text(item.get("title"))
+
         if not is_detail(url) or not title:
             continue
+
         key = url.rstrip("/").lower()
         if key in seen:
             continue
+
         seen.add(key)
         final.append(item)
 
@@ -558,7 +579,7 @@ def get_aicte_opportunities(
 
 if __name__ == "__main__":
     data = get_aicte_opportunities(
-        max_pages=1,
+        max_pages=2,
         max_results=20,
     )
     print(f"AICTE test count: {len(data)}")
