@@ -2029,6 +2029,7 @@ def save_profile(
                     "id",
                     existing_profile["id"]
                 )
+                .select("*")
                 .execute()
             )
 
@@ -2043,6 +2044,7 @@ def save_profile(
                 supabase
                 .table("student_profiles")
                 .insert(data)
+                .select("*")
                 .execute()
             )
 
