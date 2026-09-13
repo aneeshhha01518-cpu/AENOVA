@@ -1,359 +1,155 @@
 """
 AENOVA - AICTE NATIONAL INTERNSHIP PORTAL CONNECTOR
 
-Real public-source collector for the AICTE National Internship Portal.
+Purpose
+-------
+Collect real, public internship listings from the official AICTE
+National Internship Portal.
 
-Source:
-    https://internship.aicte-india.org/
+This connector supports both:
+1. The current portal route:
+      https://internship.aicte-india.org/internships
+2. The older public city route:
+      https://internship.aicte-india.org/fetch_city.php
 
-The connector reads publicly accessible AICTE internship listing pages.
-
-IMPORTANT:
-    - No fake opportunities are generated.
-    - Original AICTE listing URLs are preserved.
-    - Expired listings are rejected when a usable deadline is available.
-    - Dummy/test listings are rejected.
-    - The connector is defensive because the portal can change its HTML.
-    - No AICTE login credentials are required.
+IMPORTANT
+---------
+- No fake listings are created.
+- No organization names are invented.
+- Original AICTE URLs are preserved.
+- Expired listings are skipped when their page clearly says expired.
+- If the current portal is JavaScript-rendered and does not expose
+  listing links to a normal HTTP request, this connector safely returns
+  zero results instead of fabricating data.
 """
 
 from __future__ import annotations
 
 import base64
 import re
-
-from concurrent.futures import (
-    ThreadPoolExecutor,
-    as_completed,
-)
-
-from datetime import (
-    datetime,
-    timezone,
-)
-
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-)
-
-from urllib.parse import (
-    urljoin,
-    urlparse,
-)
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests
-
-from bs4 import (
-    BeautifulSoup,
-)
+from bs4 import BeautifulSoup
 
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-AICTE_BASE_URL = (
-    "https://internship.aicte-india.org"
-)
+AICTE_BASE_URL = "https://internship.aicte-india.org"
+AICTE_LISTING_URL = f"{AICTE_BASE_URL}/internships"
+AICTE_OLD_LISTING_URL = f"{AICTE_BASE_URL}/fetch_city.php"
 
-AICTE_LISTING_URL = (
-    f"{AICTE_BASE_URL}/fetch_city.php"
-)
-
-AICTE_SOURCE_NAME = (
-    "AICTE National Internship Portal"
-)
-
-TIMEOUT = 30
-
-MAX_PAGES_PER_CITY = 2
-
-MAX_CITIES = 25
-
-MAX_RESULTS = 120
-
+TIMEOUT = 25
 
 HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 "
-        "(Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/154.0.0.0 "
-        "Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/154.0.0.0 Safari/537.36"
     ),
     "Accept": (
-        "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,"
-        "image/webp,*/*;q=0.8"
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,image/avif,image/webp,*/*;q=0.8"
     ),
-    "Accept-Language": (
-        "en-US,en;q=0.9"
-    ),
+    "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
 }
 
 
-# ============================================================
-# CITIES / DISTRICTS
-# ============================================================
-
-# We intentionally use a practical representative list.
-#
-# The AICTE portal's public city pages are used as the
-# discovery mechanism. We do not pretend this list is the
-# complete list of every district in India.
-#
-# More cities can be added later without changing the parser.
-
-AICTE_CITIES = [
-
-    # Tamil Nadu
-    "Chennai",
-    "Coimbatore",
-    "Salem",
-    "Madurai",
-    "Tiruchirappalli",
-    "Tirunelveli",
-    "Erode",
-    "Vellore",
-    "Thanjavur",
-    "Thoothukudi",
-
-    # Karnataka
-    "Bangalore",
-    "Bengaluru",
-    "Mysore",
-    "Mysuru",
-    "Mangalore",
-    "Mangaluru",
-
-    # Telangana
-    "Hyderabad",
-    "Warangal",
-
-    # Andhra Pradesh
-    "Visakhapatnam",
-    "Vijayawada",
-    "Tirupati",
-
-    # Kerala
-    "Kochi",
-    "Thiruvananthapuram",
-
-    # Maharashtra
-    "Mumbai",
-    "Pune",
-
-    # Delhi / NCR
-    "Delhi",
-    "New Delhi",
-    "Noida",
-    "Gurugram",
-
-    # Gujarat
-    "Ahmedabad",
-
-    # Rajasthan
-    "Jaipur",
-
-    # West Bengal
-    "Kolkata",
-
-    # Odisha
-    "Bhubaneswar",
-
-    # Madhya Pradesh
-    "Indore",
-    "Bhopal",
-
-    # Uttar Pradesh
-    "Lucknow",
-    "Kanpur",
-
-    # Bihar
-    "Patna",
-
-    # Jharkhand
-    "Ranchi",
-
-    # Assam
-    "Guwahati",
-
-    # Chandigarh
-    "Chandigarh",
-
-    # Punjab
-    "Ludhiana",
-    "Amritsar",
-
-    # Haryana
-    "Faridabad",
-
-    # Goa
-    "Panaji",
+# Keep this broad. The old portal accepted city names.
+CITIES = [
+    "Agartala", "Agra", "Ahmedabad", "Ahmednagar", "Aizawl",
+    "Ajmer", "Aligarh", "Allahabad", "Amritsar", "Anand",
+    "Asansol", "Aurangabad", "Bangalore", "Bareilly", "Belgaum",
+    "Bengaluru", "Bhopal", "Bhubaneswar", "Bilaspur", "Bokaro",
+    "Chandigarh", "Chennai", "Coimbatore", "Cuttack", "Dehradun",
+    "Delhi", "Dhanbad", "Dharwad", "Dibrugarh", "Durgapur",
+    "Faridabad", "Gandhinagar", "Gangtok", "Ghaziabad", "Goa",
+    "Gorakhpur", "Gurgaon", "Gurugram", "Guwahati", "Gwalior",
+    "Haridwar", "Hyderabad", "Imphal", "Indore", "Itanagar",
+    "Jaipur", "Jalandhar", "Jammu", "Jamnagar", "Jamshedpur",
+    "Jhansi", "Jodhpur", "Kakinada", "Kanpur", "Kochi",
+    "Kolkata", "Kota", "Kozhikode", "Lucknow", "Ludhiana",
+    "Madurai", "Mangalore", "Meerut", "Mumbai", "Mysore",
+    "Nagpur", "Nashik", "Navi Mumbai", "Nellore", "Noida",
+    "Panaji", "Patiala", "Patna", "Pondicherry", "Pune",
+    "Raipur", "Rajahmundry", "Rajkot", "Ranchi", "Rohtak",
+    "Salem", "Shillong", "Shimla", "Siliguri", "Srinagar",
+    "Surat", "Thane", "Thiruvananthapuram", "Thrissur",
+    "Tiruchirappalli", "Tirunelveli", "Udaipur", "Vadodara",
+    "Varanasi", "Vasai", "Vellore", "Vijayawada", "Visakhapatnam",
+    "Warangal"
 ]
-
-
-# ============================================================
-# SESSION
-# ============================================================
-
-SESSION = requests.Session()
-
-SESSION.headers.update(
-    HEADERS
-)
 
 
 # ============================================================
 # BASIC HELPERS
 # ============================================================
 
-def clean_text(
-    value: Any,
-) -> str:
-
+def clean_text(value: Any) -> str:
     if value is None:
         return ""
 
-    text = str(value)
+    text = BeautifulSoup(str(value), "html.parser").get_text(" ", strip=True)
 
-    text = (
-        text
-        .replace("\xa0", " ")
-        .replace("\u200b", "")
-        .replace("\r", " ")
-        .replace("\n", " ")
-        .replace("\t", " ")
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text,
-    )
+    text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-def normalize_key(
-    value: str,
-) -> str:
-
-    text = clean_text(
-        value
-    ).lower()
-
-    text = re.sub(
-        r"[^a-z0-9]+",
-        "-",
-        text,
-    )
-
-    return text.strip("-")
-
-
 def now_utc() -> str:
-
-    return datetime.now(
-        timezone.utc
-    ).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
-# ============================================================
-# URL HELPERS
-# ============================================================
-
-def encode_city(
-    city: str,
-) -> str:
-
-    """
-    AICTE's fetch_city.php endpoint currently uses
-    a Base64-encoded city parameter.
-
-    Example:
-        Salem
-        ->
-        U2FsZW0=
-    """
-
-    raw = city.strip().encode(
-        "utf-8"
-    )
-
-    encoded = base64.b64encode(
-        raw
-    ).decode(
-        "ascii"
-    )
-
-    return encoded
-
-
-def city_url(
-    city: str,
-    page: int = 1,
-) -> str:
-
-    encoded = encode_city(
-        city
-    )
-
-    return (
-        f"{AICTE_LISTING_URL}"
-        f"?city={encoded}"
-        f"&page={page}"
-    )
-
-
-def is_aicte_url(
-    url: str,
-) -> bool:
-
-    if not url:
-        return False
-
-    try:
-
-        host = (
-            urlparse(url)
-            .netloc
-            .lower()
-        )
-
-        return (
-            host
-            in {
-                "internship.aicte-india.org",
-                "www.internship.aicte-india.org",
-            }
-        )
-
-    except Exception:
-
-        return False
-
-
-def absolute_url(
-    href: str,
-    base_url: str = AICTE_BASE_URL,
-) -> str:
-
-    href = clean_text(
-        href
-    )
+def absolute_url(href: str) -> str:
+    href = clean_text(href)
 
     if not href:
         return ""
 
-    return urljoin(
-        base_url,
-        href,
+    return urljoin(AICTE_BASE_URL + "/", href)
+
+
+def is_aicte_url(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+
+        return host in {
+            "internship.aicte-india.org",
+            "www.internship.aicte-india.org",
+        }
+
+    except Exception:
+        return False
+
+
+def encode_city(city: str) -> str:
+    return base64.b64encode(
+        city.encode("utf-8")
+    ).decode("ascii")
+
+
+def is_detail_url(url: str) -> bool:
+    """
+    Current AICTE detail pages use:
+        /internships/1-INTERNSHIP_...
+    Older pages use:
+        /internship-details.php?... 
+    """
+
+    if not is_aicte_url(url):
+        return False
+
+    path = urlparse(url).path.lower()
+
+    return (
+        "/internships/" in path
+        or "internship-details.php" in path
     )
 
 
@@ -361,219 +157,40 @@ def absolute_url(
 # HTTP
 # ============================================================
 
-def fetch_page(
-    url: str,
-) -> Optional[str]:
+def fetch(url: str, params: Optional[dict] = None) -> str:
+    response = requests.get(
+        url,
+        params=params,
+        headers=HEADERS,
+        timeout=TIMEOUT,
+        allow_redirects=True,
+    )
 
-    try:
+    response.raise_for_status()
 
-        response = SESSION.get(
-            url,
-            timeout=TIMEOUT,
-            allow_redirects=True,
-        )
-
-        response.raise_for_status()
-
-        if not response.text:
-            return None
-
-        return response.text
-
-    except Exception as exc:
-
-        print(
-            f"[AICTE] fetch failed: "
-            f"{url} | {exc}"
-        )
-
-        return None
+    return response.text
 
 
 # ============================================================
-# DEADLINE PARSING
+# TEXT FIELD EXTRACTION
 # ============================================================
 
-MONTHS = {
-    "jan": 1,
-    "january": 1,
-    "feb": 2,
-    "february": 2,
-    "mar": 3,
-    "march": 3,
-    "apr": 4,
-    "april": 4,
-    "may": 5,
-    "jun": 6,
-    "june": 6,
-    "jul": 7,
-    "july": 7,
-    "aug": 8,
-    "august": 8,
-    "sep": 9,
-    "sept": 9,
-    "september": 9,
-    "oct": 10,
-    "october": 10,
-    "nov": 11,
-    "november": 11,
-    "dec": 12,
-    "december": 12,
-}
+def extract_after_label(text: str, labels: List[str]) -> str:
+    """
+    Conservative label-based extraction.
 
+    Example:
+        "Apply by 29-Jun-2026"
+        -> "29-Jun-2026"
+    """
 
-def parse_date_value(
-    value: str,
-) -> Optional[datetime]:
-
-    value = clean_text(
-        value
-    )
-
-    if not value:
-        return None
-
-    formats = [
-
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%d.%m.%Y",
-
-        "%d-%m-%y",
-        "%d/%m/%y",
-
-        "%d %b %Y",
-        "%d %B %Y",
-
-        "%d-%b-%Y",
-        "%d-%B-%Y",
-
-        "%d/%b/%Y",
-        "%d/%B/%Y",
-
-        "%b %d, %Y",
-        "%B %d, %Y",
-    ]
-
-    for fmt in formats:
-
-        try:
-
-            return datetime.strptime(
-                value,
-                fmt,
-            )
-
-        except ValueError:
-
-            continue
-
-    # Generic numeric date
-    match = re.search(
-        r"\b"
-        r"(\d{1,2})"
-        r"[-/]"
-        r"(\d{1,2})"
-        r"[-/]"
-        r"(\d{4})"
-        r"\b",
-        value,
-    )
-
-    if match:
-
-        try:
-
-            return datetime(
-                int(match.group(3)),
-                int(match.group(2)),
-                int(match.group(1)),
-            )
-
-        except ValueError:
-
-            pass
-
-    # Textual month date
-    match = re.search(
-        r"\b"
-        r"(\d{1,2})\s+"
-        r"([A-Za-z]{3,12})\s+"
-        r"(\d{4})"
-        r"\b",
-        value,
-    )
-
-    if match:
-
-        day = int(
-            match.group(1)
+    for label in labels:
+        pattern = (
+            rf"{re.escape(label)}"
+            rf"\s*[:\-]?\s*"
+            rf"(.{{1,160}}?)"
+            rf"(?=\s{{2,}}|$)"
         )
-
-        month_name = (
-            match.group(2)
-            .lower()
-        )
-
-        year = int(
-            match.group(3)
-        )
-
-        month = MONTHS.get(
-            month_name
-        )
-
-        if month:
-
-            try:
-
-                return datetime(
-                    year,
-                    month,
-                    day,
-                )
-
-            except ValueError:
-
-                pass
-
-    return None
-
-
-def extract_deadline(
-    text: str,
-) -> str:
-
-    text = clean_text(
-        text
-    )
-
-    if not text:
-        return ""
-
-    patterns = [
-
-        r"Apply\s+by\s*[:\-]?\s*"
-        r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
-
-        r"Apply\s+by\s*[:\-]?\s*"
-        r"(\d{1,2}\s+[A-Za-z]{3,12}\s+\d{4})",
-
-        r"Application\s+Deadline\s*[:\-]?\s*"
-        r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
-
-        r"Deadline\s*[:\-]?\s*"
-        r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
-
-        r"Last\s+Date\s*[:\-]?\s*"
-        r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})",
-
-        r"\b"
-        r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})"
-        r"\b",
-    ]
-
-    for pattern in patterns:
 
         match = re.search(
             pattern,
@@ -582,602 +199,158 @@ def extract_deadline(
         )
 
         if match:
+            value = clean_text(match.group(1))
 
-            return clean_text(
-                match.group(1)
-            )
+            if value:
+                return value
 
     return ""
 
 
-def is_expired(
-    deadline: str,
-) -> bool:
-
-    parsed = parse_date_value(
-        deadline
-    )
-
-    if not parsed:
-        return False
-
-    today = datetime.now(
-        timezone.utc
-    ).date()
-
-    return (
-        parsed.date()
-        < today
-    )
-
-
-# ============================================================
-# FIELD CLASSIFICATION
-# ============================================================
-
-FIELD_KEYWORDS = {
-
-    "Computer Science / IT": [
-
-        "computer science",
-        "information technology",
-        "software",
-        "software development",
-        "software engineering",
-        "web development",
-        "full stack",
-        "frontend",
-        "backend",
-        "developer",
-        "programming",
-        "coding",
-        "java",
-        "python",
-        "javascript",
-        "typescript",
-        "react",
-        "node",
-        "database",
-        "sql",
-        "cloud computing",
-        "devops",
-        "cyber security",
-        "cybersecurity",
-        "networking",
-    ],
-
-    "Artificial Intelligence / Machine Learning": [
-
-        "artificial intelligence",
-        "machine learning",
-        "deep learning",
-        "generative ai",
-        "gen ai",
-        "genai",
-        "ai/ml",
-        "ai ml",
-        "large language model",
-        "llm",
-        "natural language processing",
-        "nlp",
-        "computer vision",
-        "neural network",
-        "robotics",
-    ],
-
-    "Data Science / Analytics": [
-
-        "data science",
-        "data scientist",
-        "data analytics",
-        "data analyst",
-        "analytics",
-        "big data",
-        "business intelligence",
-        "statistics",
-        "power bi",
-        "tableau",
-        "data engineering",
-        "data visualization",
-    ],
-
-    "Electronics / Electrical": [
-
-        "electronics",
-        "electrical engineering",
-        "electrical",
-        "ece",
-        "eee",
-        "embedded",
-        "embedded systems",
-        "microcontroller",
-        "vlsi",
-        "semiconductor",
-        "iot",
-        "internet of things",
-        "arduino",
-        "raspberry pi",
-        "pcb",
-        "signal processing",
-        "power systems",
-        "control systems",
-    ],
-
-    "Mechanical Engineering": [
-
-        "mechanical engineering",
-        "mechanical",
-        "automobile engineering",
-        "automotive",
-        "automobile",
-        "cad",
-        "cam",
-        "solidworks",
-        "autocad",
-        "ansys",
-        "thermodynamics",
-        "manufacturing",
-        "production engineering",
-        "mechatronics",
-        "3d printing",
-        "additive manufacturing",
-    ],
-
-    "Civil Engineering": [
-
-        "civil engineering",
-        "civil",
-        "construction",
-        "structural engineering",
-        "structural",
-        "infrastructure",
-        "surveying",
-        "geotechnical",
-        "transportation engineering",
-        "urban planning",
-        "building design",
-    ],
-
-    "Chemical Engineering": [
-
-        "chemical engineering",
-        "chemical",
-        "process engineering",
-        "process technology",
-        "petrochemical",
-        "petroleum",
-        "oil and gas",
-        "refinery",
-        "polymer",
-        "materials engineering",
-    ],
-
-    "Biotechnology / Life Sciences": [
-
-        "biotechnology",
-        "biotech",
-        "life sciences",
-        "genetics",
-        "genomics",
-        "microbiology",
-        "molecular biology",
-        "biomedical",
-        "biochemistry",
-        "cell biology",
-        "bioinformatics",
-        "neuroscience",
-    ],
-
-    "Medicine / Healthcare": [
-
-        "medicine",
-        "medical",
-        "healthcare",
-        "health care",
-        "clinical",
-        "hospital",
-        "nursing",
-        "public health",
-        "clinical research",
-        "medical research",
-        "physiotherapy",
-        "dentistry",
-        "dental",
-        "health technology",
-    ],
-
-    "Pharmacy": [
-
-        "pharmacy",
-        "pharmaceutical",
-        "pharmaceuticals",
-        "pharmacology",
-        "pharmacist",
-        "drug discovery",
-        "drug development",
-        "clinical pharmacy",
-        "medicinal chemistry",
-    ],
-
-    "Finance": [
-
-        "finance",
-        "financial",
-        "investment",
-        "banking",
-        "fintech",
-        "stock market",
-        "capital market",
-        "portfolio",
-        "financial analysis",
-        "financial modelling",
-        "financial modeling",
-        "insurance",
-        "wealth management",
-    ],
-
-    "Commerce / Accounting": [
-
-        "commerce",
-        "accounting",
-        "accountant",
-        "taxation",
-        "audit",
-        "auditing",
-        "gst",
-        "income tax",
-        "bookkeeping",
-        "chartered accountant",
-    ],
-
-    "Business / Management": [
-
-        "business",
-        "management",
-        "mba",
-        "entrepreneurship",
-        "entrepreneur",
-        "startup",
-        "business development",
-        "operations",
-        "strategy",
-        "consulting",
-        "project management",
-        "human resources",
-        "supply chain",
-        "logistics",
-    ],
-
-    "Marketing / Media": [
-
-        "marketing",
-        "digital marketing",
-        "social media",
-        "content",
-        "content creation",
-        "media",
-        "communications",
-        "public relations",
-        "branding",
-        "advertising",
-        "copywriting",
-        "seo",
-    ],
-
-    "Law": [
-
-        "law",
-        "legal",
-        "llb",
-        "llm",
-        "moot court",
-        "advocacy",
-        "litigation",
-        "corporate law",
-        "legal research",
-        "intellectual property",
-        "compliance",
-    ],
-
-    "Agriculture": [
-
-        "agriculture",
-        "agri",
-        "farming",
-        "farmer",
-        "horticulture",
-        "agricultural",
-        "agronomy",
-        "crop",
-        "soil science",
-        "agritech",
-        "food technology",
-        "food science",
-    ],
-
-    "Environment": [
-
-        "environment",
-        "environmental",
-        "climate",
-        "climate change",
-        "sustainability",
-        "sustainable development",
-        "renewable energy",
-        "green energy",
-        "solar energy",
-        "wind energy",
-        "clean energy",
-        "waste management",
-        "water management",
-        "carbon",
-        "esg",
-    ],
-
-    "Design / Architecture": [
-
-        "design",
-        "ui/ux",
-        "ui ux",
-        "ux",
-        "user experience",
-        "user interface",
-        "graphic design",
-        "visual design",
-        "product design",
-        "industrial design",
-        "architecture",
-        "architectural",
-        "fashion design",
-        "interior design",
-        "illustration",
-        "figma",
-        "adobe",
-    ],
-
-    "Arts / Humanities": [
-
-        "arts",
-        "humanities",
-        "history",
-        "literature",
-        "english",
-        "language",
-        "linguistics",
-        "psychology",
-        "sociology",
-        "political science",
-        "philosophy",
-        "anthropology",
-        "cultural studies",
-        "journalism",
-    ],
-
-    "Education": [
-
-        "education",
-        "teaching",
-        "teacher",
-        "training",
-        "pedagogy",
-        "educational",
-        "edtech",
-        "e-learning",
-        "elearning",
-        "curriculum",
-    ],
-
-    "Science / Research": [
-
-        "science",
-        "research",
-        "physics",
-        "chemistry",
-        "astronomy",
-        "scientific",
-        "scientist",
-        "mathematics",
-        "mathematical",
-        "laboratory",
-        "lab research",
-    ],
-}
-
-
-def extract_field(
-    text: str,
-) -> str:
-
-    text = clean_text(
-        text
-    ).lower()
-
-    if not text:
-        return "All Fields / General"
-
-    scores = {}
-
-    for field, keywords in (
-        FIELD_KEYWORDS.items()
-    ):
-
-        score = 0
-
-        for keyword in keywords:
-
-            if keyword in text:
-
-                if " " in keyword:
-
-                    score += 2
-
-                else:
-
-                    score += 1
-
-        if score > 0:
-
-            scores[field] = score
-
-    if not scores:
-
-        return "All Fields / General"
-
-    return max(
-        scores,
-        key=scores.get,
+def extract_deadline(text: str) -> str:
+    patterns = [
+        r"apply\s+by\s*[:\-]?\s*"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+
+        r"last\s+date\s+to\s+apply\s*[:\-]?\s*"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+
+        r"application\s+deadline\s*[:\-]?\s*"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+
+        r"deadline\s*[:\-]?\s*"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            value = clean_text(match.group(1))
+
+            if value:
+                return value
+
+    return extract_after_label(
+        text,
+        [
+            "Apply by",
+            "Last date to apply",
+            "Application deadline",
+            "Deadline",
+        ],
     )
 
 
-# ============================================================
-# MODE
-# ============================================================
+def extract_duration(text: str) -> str:
+    patterns = [
+        r"duration\s*[:\-]?\s*"
+        r"([0-9]+(?:\.[0-9]+)?\s*"
+        r"(?:days?|weeks?|months?|years?))",
 
-def extract_mode(
-    text: str,
-) -> str:
+        r"available\s+for\s+duration\s+of\s+"
+        r"([0-9]+(?:\.[0-9]+)?\s*"
+        r"(?:days?|weeks?|months?|years?))",
+    ]
 
-    text = clean_text(
-        text
-    ).lower()
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
 
-    if any(
-        value in text
-        for value in [
-            "virtual internship",
-            "work from home",
-            "work-from-home",
-            "remote",
-            "fully remote",
-        ]
+        if match:
+            return clean_text(match.group(1))
+
+    return ""
+
+
+def extract_stipend(text: str) -> str:
+    patterns = [
+        r"stipend\s*[:\-]?\s*"
+        r"(₹\s*[\d,]+(?:\s*/\s*month)?|"
+        r"Rs\.?\s*[\d,]+(?:\s*/\s*month)?|"
+        r"INR\s*[\d,]+(?:\s*/\s*month)?)",
+
+        r"₹\s*[\d,]+\s*/\s*month",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            return clean_text(match.group(0))
+
+    if re.search(r"stipend\s*[:\-]?\s*0\b", text, re.I):
+        return "₹0 / month"
+
+    return ""
+
+
+def extract_mode(text: str) -> str:
+    lowered = text.lower()
+
+    if (
+        "work from home" in lowered
+        or "remote" in lowered
+        or "fully online" in lowered
+        or "100% online" in lowered
     ):
-
-        return "Remote"
-
-    if any(
-        value in text
-        for value in [
-            "hybrid",
-            "online and offline",
-            "offline and online",
-        ]
-    ):
-
-        return "Hybrid"
-
-    if any(
-        value in text
-        for value in [
-            "online",
-            "virtual",
-        ]
-    ):
-
         return "Online"
 
-    if any(
-        value in text
-        for value in [
-            "full time",
-            "offline",
-            "on-site",
-            "onsite",
-            "in-person",
-            "in person",
-        ]
+    if (
+        "hybrid" in lowered
+        or "online and offline" in lowered
+        or "online/offline" in lowered
     ):
+        return "Hybrid"
 
+    if (
+        "full time (in-office)" in lowered
+        or "in-office" in lowered
+        or "offline" in lowered
+        or "in person" in lowered
+    ):
         return "Offline"
 
-    return "See official listing"
-
-
-# ============================================================
-# LOCATION
-# ============================================================
-
-def extract_location(
-    text: str,
-    city: str,
-) -> str:
-
-    text = clean_text(
-        text
-    )
-
-    if re.search(
-        r"\bpan\s*india\b",
-        text,
-        flags=re.IGNORECASE,
-    ):
-
-        return "Pan India"
-
-    if re.search(
-        r"\bindia\b",
-        text,
-        flags=re.IGNORECASE,
-    ):
-
-        return "India"
-
-    mode_patterns = [
-        "remote",
-        "work from home",
-        "virtual internship",
-        "online",
-    ]
-
-    for pattern in mode_patterns:
-
-        if re.search(
-            re.escape(pattern),
-            text,
-            flags=re.IGNORECASE,
-        ):
-
-            return "Remote / Online"
-
-    if city:
-
-        return city
+    if "online" in lowered or "virtual" in lowered:
+        return "Online"
 
     return "See official listing"
 
 
-# ============================================================
-# STIPEND
-# ============================================================
-
-def extract_stipend(
-    text: str,
-) -> str:
-
-    text = clean_text(
-        text
-    )
-
+def extract_location(text: str) -> str:
     patterns = [
-
-        r"Stipend\s*"
-        r"₹\s*[\d,]+"
-        r"(?:\s*/\s*month)?",
-
-        r"₹\s*[\d,]+"
-        r"(?:\s*/\s*month)?",
-
-        r"Stipend\s*"
-        r"Rs\.?\s*[\d,]+"
-        r"(?:\s*/\s*month)?",
-
-        r"Stipend\s*"
-        r"Unpaid internship",
-
-        r"Unpaid",
+        r"\bPan India\b",
+        r"\bRemote\b",
+        r"\bWork from Home\b",
+        r"\bHybrid\b",
+        r"\bDelhi\b",
+        r"\bMumbai\b",
+        r"\bBengaluru\b",
+        r"\bBangalore\b",
+        r"\bChennai\b",
+        r"\bHyderabad\b",
+        r"\bPune\b",
+        r"\bKolkata\b",
+        r"\bAhmedabad\b",
+        r"\bNoida\b",
+        r"\bGurugram\b",
+        r"\bGurgaon\b",
+        r"\bCoimbatore\b",
+        r"\bSalem\b",
     ]
 
     for pattern in patterns:
-
         match = re.search(
             pattern,
             text,
@@ -1185,37 +358,26 @@ def extract_stipend(
         )
 
         if match:
+            return clean_text(match.group(0))
 
-            return clean_text(
-                match.group(0)
-            )
-
-    return "See official listing"
+    return ""
 
 
-# ============================================================
-# DURATION
-# ============================================================
-
-def extract_duration(
-    text: str,
-) -> str:
-
-    text = clean_text(
-        text
-    )
+def extract_organization(text: str) -> str:
+    """
+    Organization is extracted only from explicit labels or known
+    detail-page structures. We do not guess from arbitrary sentences.
+    """
 
     patterns = [
+        r"(?:organization|organisation|company|employer)"
+        r"\s*[:\-]\s*([^|]{2,120})",
 
-        r"Duration\s*"
-        r"(\d+\s*(?:week|weeks|month|months|year|years))",
-
-        r"(\d+\s*(?:week|weeks|month|months|year|years))"
-        r"\s+(?:internship|program)",
+        r"^([A-Z][A-Za-z0-9&.,'()\- ]{2,100})\s+"
+        r"(?:Full Time|Part Time|Work from Home|Remote)",
     ]
 
     for pattern in patterns:
-
         match = re.search(
             pattern,
             text,
@@ -1223,488 +385,309 @@ def extract_duration(
         )
 
         if match:
+            value = clean_text(match.group(1))
 
-            return clean_text(
-                match.group(1)
-            )
+            if value and len(value) <= 120:
+                return value
 
-    return "See official listing"
+    return "Organization not available"
+
+
+def extract_field(text: str) -> str:
+    """
+    Broad academic/professional classification.
+    This does not invent a specific department; it only reports
+    domains supported by words actually present in the listing.
+    """
+
+    aliases = {
+        "Artificial Intelligence / Machine Learning": [
+            "artificial intelligence",
+            "machine learning",
+            "deep learning",
+            "generative ai",
+            "llm",
+            "large language model",
+        ],
+        "Computer Science / Software": [
+            "software development",
+            "software engineer",
+            "web development",
+            "website development",
+            "full stack",
+            "frontend",
+            "backend",
+            "python",
+            "java",
+            "programming",
+        ],
+        "Data Science / Analytics": [
+            "data science",
+            "data analyst",
+            "data analytics",
+            "business analytics",
+            "data visualization",
+        ],
+        "Electronics / Electrical": [
+            "electronics",
+            "embedded",
+            "electrical",
+            "vlsi",
+            "microcontroller",
+            "iot",
+        ],
+        "Mechanical / Automotive": [
+            "mechanical",
+            "automotive",
+            "cad",
+            "manufacturing",
+            "robotics",
+        ],
+        "Civil / Infrastructure": [
+            "civil engineering",
+            "construction",
+            "structural",
+            "infrastructure",
+            "roads",
+            "highways",
+        ],
+        "Chemical / Biotechnology": [
+            "chemical engineering",
+            "biotechnology",
+            "biotech",
+            "pharmaceutical",
+            "laboratory",
+        ],
+        "Finance / Commerce": [
+            "finance",
+            "accounting",
+            "commerce",
+            "investment",
+            "financial",
+            "banking",
+        ],
+        "Management / Business": [
+            "business development",
+            "management",
+            "marketing",
+            "human resources",
+            "operations",
+            "sales",
+        ],
+        "Design / Media": [
+            "graphic design",
+            "ui/ux",
+            "user experience",
+            "content creation",
+            "video editing",
+            "media",
+        ],
+        "Law / Policy / Government": [
+            "law",
+            "legal",
+            "policy",
+            "public administration",
+            "government",
+            "governance",
+        ],
+        "Education / Teaching": [
+            "teaching",
+            "education",
+            "trainer",
+            "academic",
+            "curriculum",
+        ],
+        "Social Sciences / Humanities": [
+            "social science",
+            "psychology",
+            "sociology",
+            "economics",
+            "humanities",
+            "journalism",
+        ],
+        "Agriculture / Environment": [
+            "agriculture",
+            "agri",
+            "environment",
+            "sustainability",
+            "climate",
+            "forestry",
+        ],
+    }
+
+    lowered = text.lower()
+
+    found = []
+
+    for field, keywords in aliases.items():
+        if any(keyword in lowered for keyword in keywords):
+            found.append(field)
+
+    if not found:
+        return "General / Interdisciplinary"
+
+    return " / ".join(found[:3])
+
+
+def extract_eligibility(text: str) -> str:
+    patterns = [
+        r"who can apply\??\s*(.{20,700}?)(?="
+        r"\s+terms of engagement|\s+number of openings|"
+        r"\s+apply now|\s+brief abstract|$)",
+
+        r"requirements?\s*(.{20,700}?)(?="
+        r"\s+terms of engagement|\s+number of openings|"
+        r"\s+apply now|\s+brief abstract|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            value = clean_text(match.group(1))
+
+            if value:
+                return value[:1000]
+
+    return ""
+
+
+def extract_event_date(text: str) -> str:
+    patterns = [
+        r"start\s+date\s*[:\-]?\s*"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+
+        r"starts?\s+on\s+"
+        r"([0-9]{1,2}[-/\s][A-Za-z0-9]{2,9}[-/\s][0-9]{2,4})",
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+            return clean_text(match.group(1))
+
+    return ""
 
 
 # ============================================================
-# TEST / DUMMY FILTER
+# EXPIRY CHECK
 # ============================================================
 
-def is_test_listing(
-    title: str,
-    organization: str,
-    text: str,
-) -> bool:
+def is_expired(text: str) -> bool:
+    lowered = text.lower()
 
-    combined = (
-        f"{title} "
-        f"{organization} "
-        f"{text}"
-    ).lower()
-
-    blocked = [
-
-        "dummy internship",
-
-        "dummy listing",
-
-        "test internship",
-
-        "test listing",
-
-        "do not apply",
-
-        "dont apply",
-
-        "don't apply",
-
-        "sample internship",
-
-        "sample listing",
+    expired_phrases = [
+        "sorry you cannot apply",
+        "date expired",
+        "application closed",
+        "applications closed",
+        "expired",
+        "closed for applications",
     ]
 
     return any(
-        phrase in combined
-        for phrase in blocked
+        phrase in lowered
+        for phrase in expired_phrases
     )
 
 
 # ============================================================
-# LINK EXTRACTION
+# CURRENT PORTAL PARSER
 # ============================================================
 
-def extract_detail_url(
-    card,
-    base_url: str,
-) -> str:
-
+def find_current_detail_links(html: str) -> List[str]:
     """
-    Find the real AICTE 'View Details' URL.
-    """
+    Find current AICTE detail URLs exposed in normal HTML.
 
-    # Prefer anchors containing View Details.
-    for anchor in card.find_all(
-        "a",
-        href=True,
-    ):
+    Current pages use URLs like:
+      /internships/1-INTERNSHIP_...
 
-        label = clean_text(
-            anchor.get_text(
-                " ",
-                strip=True,
-            )
-        ).lower()
-
-        href = absolute_url(
-            anchor.get(
-                "href",
-                ""
-            ),
-            base_url,
-        )
-
-        if (
-            "view details"
-            in label
-            and href
-        ):
-
-            if is_aicte_url(
-                href
-            ):
-
-                return href
-
-    # Fallback: first AICTE detail link.
-    for anchor in card.find_all(
-        "a",
-        href=True,
-    ):
-
-        href = absolute_url(
-            anchor.get(
-                "href",
-                ""
-            ),
-            base_url,
-        )
-
-        if not is_aicte_url(
-            href
-        ):
-            continue
-
-        path = (
-            urlparse(href)
-            .path
-            .lower()
-        )
-
-        if (
-            "internship"
-            in path
-            and
-            "fetch_city"
-            not in path
-        ):
-
-            return href
-
-    return ""
-
-
-# ============================================================
-# CARD DISCOVERY
-# ============================================================
-
-def find_candidate_cards(
-    soup: BeautifulSoup,
-) -> List[Any]:
-
-    """
-    AICTE's HTML can change.
-
-    We therefore identify cards by finding elements
-    containing the characteristic internship labels
-    rather than relying on one fragile CSS class.
+    We deliberately do not manufacture URLs if the portal is
+    client-side rendered.
     """
 
-    candidates = []
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
 
-    seen = set()
-
-    # --------------------------------------------------------
-    # First: anchors with "View Details"
-    # --------------------------------------------------------
+    links = []
 
     for anchor in soup.find_all(
         "a",
         href=True,
     ):
+        href = anchor.get("href", "")
 
-        label = clean_text(
-            anchor.get_text(
-                " ",
-                strip=True,
-            )
-        ).lower()
+        url = absolute_url(href)
 
-        if (
-            "view details"
-            not in label
-        ):
+        if not is_detail_url(url):
             continue
 
-        parent = anchor
-
-        # Move upward until we find a reasonable
-        # card-sized container.
-        for _ in range(7):
-
-            if parent is None:
-                break
-
-            text = clean_text(
-                parent.get_text(
-                    " ",
-                    strip=True,
-                )
-            )
-
-            if (
-                "apply by"
-                in text.lower()
-                and
-                len(text)
-                >= 80
-            ):
-
-                marker = id(parent)
-
-                if marker not in seen:
-
-                    seen.add(
-                        marker
-                    )
-
-                    candidates.append(
-                        parent
-                    )
-
-                break
-
-            parent = (
-                parent.parent
-            )
-
-    # --------------------------------------------------------
-    # Fallback: headings containing internship content
-    # --------------------------------------------------------
-
-    if not candidates:
-
-        for heading in soup.find_all(
-            [
-                "h2",
-                "h3",
-                "h4",
-            ]
-        ):
-
-            text = clean_text(
-                heading.get_text(
-                    " ",
-                    strip=True,
-                )
-            )
-
-            if len(text) < 5:
-                continue
-
-            parent = heading
-
-            for _ in range(6):
-
-                if parent is None:
-                    break
-
-                parent_text = clean_text(
-                    parent.get_text(
-                        " ",
-                        strip=True,
-                    )
-                )
-
-                if (
-                    "apply by"
-                    in parent_text.lower()
-                    and
-                    len(parent_text)
-                    >= 80
-                ):
-
-                    marker = id(parent)
-
-                    if marker not in seen:
-
-                        seen.add(
-                            marker
-                        )
-
-                        candidates.append(
-                            parent
-                        )
-
-                    break
-
-                parent = (
-                    parent.parent
-                )
-
-    return candidates
-
-
-# ============================================================
-# TITLE / ORGANIZATION
-# ============================================================
-
-def extract_title(
-    card,
-) -> str:
-
-    for heading in card.find_all(
-        [
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-        ]
-    ):
-
-        text = clean_text(
-            heading.get_text(
-                " ",
-                strip=True,
-            )
-        )
-
-        if (
-            len(text) >= 5
-            and
-            "view details"
-            not in text.lower()
-        ):
-
-            return text[:300]
-
-    # Fallback: use first meaningful text
-    # line before organization-like content.
-    lines = []
-
-    for element in card.find_all(
-        string=True
-    ):
-
-        text = clean_text(
-            element
-        )
-
-        if text:
-
-            lines.append(
-                text
-            )
-
-    blocked = {
-
-        "view details",
-
-        "start date",
-
-        "duration",
-
-        "stipend",
-
-        "apply by",
-
-        "immediately",
-
-        "virtual internship",
-
-        "full time",
-    }
-
-    for line in lines:
-
-        if (
-            len(line) >= 5
-            and
-            line.lower()
-            not in blocked
-        ):
-
-            return line[:300]
-
-    return ""
-
-
-def extract_organization(
-    card,
-    title: str,
-) -> str:
-
-    text_lines = []
-
-    for element in card.find_all(
-        string=True
-    ):
-
-        text = clean_text(
-            element
-        )
-
-        if text:
-
-            text_lines.append(
-                text
-            )
-
-    # Remove title and generic labels.
-    blocked = {
-
-        title.lower(),
-
-        "view details",
-
-        "start date",
-
-        "duration",
-
-        "stipend",
-
-        "apply by",
-
-        "immediately",
-
-        "virtual internship",
-
-        "full time",
-
-        "part time",
-
-        "remote",
-
-        "online",
-
-        "offline",
-
-        "hybrid",
-    }
-
-    for line in text_lines:
-
-        lower = line.lower()
-
-        if lower in blocked:
+        links.append(url)
+
+    # Also inspect raw HTML for absolute URLs that may be present
+    # inside script/data attributes.
+    raw_matches = re.findall(
+        r"https?://internship\.aicte-india\.org/"
+        r"(?:internships/[^\"'\\\s<>]+|internship-details\.php\?[^\"'\\\s<>]+)",
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    links.extend(
+        absolute_url(url)
+        for url in raw_matches
+    )
+
+    # De-duplicate while preserving order.
+    unique = []
+
+    seen = set()
+
+    for url in links:
+        key = url.rstrip("/").lower()
+
+        if key in seen:
             continue
 
-        if re.fullmatch(
-            r"\d{1,2}[-/]\d{1,2}[-/]\d{4}",
-            line,
-        ):
-            continue
+        seen.add(key)
 
-        if re.fullmatch(
-            r"₹[\d,]+.*",
-            line,
-        ):
-            continue
+        unique.append(url)
 
-        if len(line) < 2:
-            continue
-
-        # Organization names on the portal
-        # are normally short and appear directly
-        # after the title.
-        if (
-            len(line) <= 180
-            and
-            not any(
-                word in lower
-                for word in [
-                    "start date",
-                    "duration",
-                    "stipend",
-                    "apply by",
-                    "pan india",
-                    "india,",
-                ]
-            )
-        ):
-
-            return line[:180]
-
-    return "Organization not available"
+    return unique
 
 
-# ============================================================
-# RECORD BUILDER
-# ============================================================
-
-def build_record(
-    card,
-    city: str,
-    listing_url: str,
+def parse_current_detail_page(
+    url: str,
 ) -> Optional[Dict[str, Any]]:
 
+    try:
+        html = fetch(url)
+
+    except Exception as exc:
+        print(
+            f"[AICTE] detail fetch failed: "
+            f"{url} -> {exc}"
+        )
+        return None
+
+    soup = BeautifulSoup(
+        html,
+        "html.parser",
+    )
+
     text = clean_text(
-        card.get_text(
+        soup.get_text(
             " ",
             strip=True,
         )
@@ -1713,201 +696,378 @@ def build_record(
     if not text:
         return None
 
-    title = extract_title(
-        card
-    )
+    if is_expired(text):
+        return None
+
+    title = ""
+
+    # Prefer H1/H2/H3 because AICTE detail pages place the
+    # internship title prominently.
+    for heading in soup.find_all(
+        ["h1", "h2", "h3"],
+    ):
+        candidate = clean_text(
+            heading.get_text(
+                " ",
+                strip=True,
+            )
+        )
+
+        if (
+            candidate
+            and len(candidate) >= 5
+            and candidate.lower()
+            not in {
+                "apply now",
+                "brief abstract",
+                "requirements",
+                "requirements:",
+            }
+        ):
+            title = candidate
+
+            break
+
+    if not title:
+        # Current pages may have the title in a metadata tag.
+        for selector in [
+            ("meta", {"property": "og:title"}),
+            ("meta", {"name": "title"}),
+        ]:
+            tag = soup.find(
+                selector[0],
+                attrs=selector[1],
+            )
+
+            if tag:
+                candidate = clean_text(
+                    tag.get("content", "")
+                )
+
+                if candidate:
+                    title = candidate
+                    break
 
     if not title:
         return None
 
-    organization = (
-        extract_organization(
-            card,
-            title,
-        )
-    )
+    organization = extract_organization(text)
 
-    if is_test_listing(
-        title,
-        organization,
-        text,
-    ):
+    location = extract_location(text)
 
-        return None
+    mode = extract_mode(text)
 
-    deadline = extract_deadline(
-        text
-    )
+    deadline = extract_deadline(text)
 
-    # Reject expired listings when a real
-    # deadline is available.
-    if (
-        deadline
-        and
-        is_expired(
-            deadline
-        )
-    ):
+    event_date = extract_event_date(text)
 
-        return None
+    duration = extract_duration(text)
 
-    detail_url = (
-        extract_detail_url(
-            card,
-            listing_url,
-        )
-    )
+    stipend = extract_stipend(text)
 
-    # AENOVA must not create fake application URLs.
-    if not detail_url:
-        return None
-
-    combined_text = (
-        f"{title} "
-        f"{organization} "
-        f"{text}"
-    )
+    eligibility = extract_eligibility(text)
 
     field = extract_field(
-        combined_text
+        f"{title} {text}"
     )
 
-    mode = extract_mode(
-        combined_text
+    description = ""
+
+    # Use the "About the program" section when available.
+    about_match = re.search(
+        r"about the program\s*(.{40,1800}?)(?="
+        r"\s+perks|\s+who can apply|\s+terms of engagement|"
+        r"\s+number of openings|\s+apply now|$)",
+        text,
+        flags=re.IGNORECASE,
     )
 
-    location = extract_location(
-        combined_text,
-        city,
-    )
-
-    stipend = extract_stipend(
-        text
-    )
-
-    duration = extract_duration(
-        text
-    )
-
-    source_id = normalize_key(
-        detail_url
-    )
-
-    if not source_id:
-
-        source_id = normalize_key(
-            f"{title}-{organization}"
+    if about_match:
+        description = clean_text(
+            about_match.group(1)
         )
 
+    if not description:
+        description = (
+            f"Internship listed on the official "
+            f"AICTE National Internship Portal."
+        )
+
+    details = []
+
+    if duration:
+        details.append(
+            f"Duration: {duration}"
+        )
+
+    if stipend:
+        details.append(
+            f"Stipend: {stipend}"
+        )
+
+    if mode != "See official listing":
+        details.append(
+            f"Mode: {mode}"
+        )
+
+    if details:
+        description = (
+            description
+            + " "
+            + " ".join(details)
+        )
+
+    source_id = (
+        urlparse(url)
+        .path
+        .rstrip("/")
+        .split("/")
+        [-1]
+    )
+
     return {
-
-        "title": title,
-
+        "title": title[:500],
+        "description": description[:2500],
         "category": "Internship",
-
         "field": field,
-
+        "eligibility": eligibility[:1500],
         "organization": organization,
-
-        "location": location,
-
+        "location": (
+            location
+            or "See official listing"
+        ),
+        "deadline": deadline,
+        "event_date": event_date,
         "mode": mode,
-
-        "deadline": (
-            deadline
-            or
-            "See official listing"
-        ),
-
-        "duration": duration,
-
-        "stipend": stipend,
-
-        "description": (
-            text[:1200]
-        ),
-
-        "url": detail_url,
-
-        "source": AICTE_SOURCE_NAME,
-
+        "skills_required": "",
+        "url": url,
+        "official_url": url,
+        "source": "AICTE",
         "source_id": source_id,
-
-        "source_city": city,
-
         "last_verified": now_utc(),
-
-        "is_real": True,
-
-        "is_live_source": True,
     }
 
 
 # ============================================================
-# PARSE ONE CITY PAGE
+# OLD CITY-PAGE FALLBACK
 # ============================================================
 
-def parse_city_page(
-    city: str,
-    page: int = 1,
+def parse_old_city_page(
+    html: str,
 ) -> List[Dict[str, Any]]:
-
-    url = city_url(
-        city,
-        page,
-    )
-
-    html = fetch_page(
-        url
-    )
-
-    if not html:
-        return []
 
     soup = BeautifulSoup(
         html,
         "html.parser",
     )
 
-    cards = find_candidate_cards(
-        soup
-    )
-
     results = []
 
-    seen_urls = set()
+    for anchor in soup.find_all(
+        "a",
+        href=True,
+    ):
+        label = clean_text(
+            anchor.get_text(
+                " ",
+                strip=True,
+            )
+        ).lower()
 
-    for card in cards:
-
-        record = build_record(
-            card,
-            city,
-            url,
+        href = anchor.get(
+            "href",
+            "",
         )
 
-        if not record:
+        url = absolute_url(href)
+
+        if not is_detail_url(url):
             continue
 
-        record_url = record.get(
-            "url",
-            ""
+        # Old pages commonly used "View Details".
+        # We also accept any real AICTE detail link because
+        # current markup can differ.
+        card = anchor
+
+        for _ in range(4):
+            if card.parent is None:
+                break
+
+            parent = card.parent
+
+            parent_text = clean_text(
+                parent.get_text(
+                    " ",
+                    strip=True,
+                )
+            )
+
+            if (
+                len(parent_text) >= 40
+                and len(parent_text) <= 3000
+            ):
+                card = parent
+                break
+
+            card = parent
+
+        card_text = clean_text(
+            card.get_text(
+                " ",
+                strip=True,
+            )
         )
 
-        if (
-            record_url
-            in seen_urls
+        if not card_text:
+            continue
+
+        if is_expired(card_text):
+            continue
+
+        title = ""
+
+        # Look for a meaningful heading inside the card.
+        for heading in card.find_all(
+            ["h1", "h2", "h3", "h4", "strong"],
         ):
+            candidate = clean_text(
+                heading.get_text(
+                    " ",
+                    strip=True,
+                )
+            )
+
+            if (
+                len(candidate) >= 5
+                and candidate.lower()
+                not in {
+                    "view details",
+                    "apply now",
+                    "register now",
+                }
+            ):
+                title = candidate
+                break
+
+        if not title:
+            title = (
+                label
+                if label
+                not in {
+                    "view details",
+                    "view",
+                    "details",
+                    "apply now",
+                }
+                else ""
+            )
+
+        if not title:
             continue
 
-        seen_urls.add(
-            record_url
+        organization = extract_organization(
+            card_text
+        )
+
+        location = extract_location(
+            card_text
+        )
+
+        mode = extract_mode(
+            card_text
+        )
+
+        deadline = extract_deadline(
+            card_text
+        )
+
+        field = extract_field(
+            f"{title} {card_text}"
+        )
+
+        eligibility = extract_eligibility(
+            card_text
+        )
+
+        source_id = (
+            urlparse(url)
+            .path
+            .rstrip("/")
+            .split("/")
+            [-1]
         )
 
         results.append(
-            record
+            {
+                "title": title[:500],
+                "description": (
+                    "Internship listed on the official "
+                    "AICTE National Internship Portal."
+                ),
+                "category": "Internship",
+                "field": field,
+                "eligibility": eligibility[:1500],
+                "organization": organization,
+                "location": (
+                    location
+                    or "See official listing"
+                ),
+                "deadline": deadline,
+                "event_date": "",
+                "mode": mode,
+                "skills_required": "",
+                "url": url,
+                "official_url": url,
+                "source": "AICTE",
+                "source_id": source_id,
+                "last_verified": now_utc(),
+            }
         )
 
     return results
+
+
+def fetch_old_city(
+    city: str,
+    page: int,
+) -> List[Dict[str, Any]]:
+
+    params = {
+        "city": encode_city(city),
+        "page": page,
+    }
+
+    try:
+        response = requests.get(
+            AICTE_OLD_LISTING_URL,
+            params=params,
+            headers=HEADERS,
+            timeout=TIMEOUT,
+            allow_redirects=True,
+        )
+
+        response.raise_for_status()
+
+        # If the old endpoint now redirects to the current
+        # /internships page, do not pretend that it is still
+        # a city-specific listing page.
+        if (
+            "/internships" in response.url
+            and "fetch_city.php" not in response.url
+        ):
+            return []
+
+        return parse_old_city_page(
+            response.text
+        )
+
+    except Exception as exc:
+        print(
+            f"[AICTE] old city page failed "
+            f"{city} page {page}: {exc}"
+        )
+
+        return []
 
 
 # ============================================================
@@ -1915,405 +1075,282 @@ def parse_city_page(
 # ============================================================
 
 def deduplicate(
-    opportunities: List[
-        Dict[str, Any]
-    ],
-) -> List[
-    Dict[str, Any]
-]:
+    opportunities: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
 
-    result = []
+    final = []
 
     seen_urls = set()
-
-    seen_keys = set()
+    seen_titles = set()
 
     for item in opportunities:
 
         url = clean_text(
-            item.get(
-                "url",
-                "",
-            )
+            item.get("url")
         )
 
-        title = normalize_key(
-            item.get(
-                "title",
-                "",
-            )
+        title = clean_text(
+            item.get("title")
+        ).lower()
+
+        url_key = (
+            url.rstrip("/")
+            .lower()
         )
 
-        organization = normalize_key(
-            item.get(
-                "organization",
-                "",
-            )
-        )
+        title_key = title
 
-        key = (
-            f"{title}|"
-            f"{organization}"
-        )
-
-        if url:
-
-            normalized_url = (
-                url.rstrip("/")
-                .lower()
-            )
-
-            if normalized_url in seen_urls:
-                continue
-
-            seen_urls.add(
-                normalized_url
-            )
-
-        if key in seen_keys:
+        if (
+            url_key
+            and url_key in seen_urls
+        ):
             continue
 
-        seen_keys.add(
-            key
-        )
+        if (
+            title_key
+            and title_key in seen_titles
+        ):
+            continue
 
-        result.append(
-            item
-        )
+        if url_key:
+            seen_urls.add(url_key)
 
-    return result
+        if title_key:
+            seen_titles.add(title_key)
+
+        final.append(item)
+
+    return final
 
 
 # ============================================================
-# FETCH AICTE OPPORTUNITIES
+# VALIDATION
+# ============================================================
+
+def validate(
+    opportunities: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+
+    final = []
+
+    for item in opportunities:
+
+        title = clean_text(
+            item.get("title")
+        )
+
+        url = clean_text(
+            item.get("url")
+        )
+
+        if len(title) < 4:
+            continue
+
+        if not is_aicte_url(url):
+            continue
+
+        if not is_detail_url(url):
+            continue
+
+        if clean_text(
+            item.get("category")
+        ) != "Internship":
+            continue
+
+        if not clean_text(
+            item.get("organization")
+        ):
+            item["organization"] = (
+                "Organization not available"
+            )
+
+        if not clean_text(
+            item.get("location")
+        ):
+            item["location"] = (
+                "See official listing"
+            )
+
+        final.append(item)
+
+    return final
+
+
+# ============================================================
+# MAIN COLLECTOR
 # ============================================================
 
 def get_aicte_opportunities(
-    cities: Optional[
-        List[str]
-    ] = None,
-    max_pages: int = MAX_PAGES_PER_CITY,
-    max_results: int = MAX_RESULTS,
-) -> List[
-    Dict[str, Any]
-]:
-
+    max_pages: int = 1,
+    max_results: int = 120,
+) -> List[Dict[str, Any]]:
     """
-    Collect real public AICTE internship listings.
+    Collect live AICTE internships.
 
-    The collector uses a bounded number of city pages
-    to avoid excessive requests.
-
-    Returns normalized AENOVA opportunity dictionaries.
+    Strategy:
+    1. Try the current /internships portal.
+    2. If ordinary HTML exposes detail links, open those detail pages.
+    3. If it does not, try the old public city endpoint as a fallback.
+    4. Never invent a listing URL or listing data.
     """
 
-    selected_cities = (
-        cities
-        if cities
-        else AICTE_CITIES[:MAX_CITIES]
-    )
-
-    # Remove duplicates while preserving order.
-    selected_cities = list(
-        dict.fromkeys(
-            selected_cities
-        )
-    )
-
-    jobs = []
-
-    tasks = []
-
-    for city in selected_cities:
-
-        for page in range(
-            1,
-            max_pages + 1,
-        ):
-
-            tasks.append(
-                (
-                    city,
-                    page,
-                )
-            )
+    all_results: List[Dict[str, Any]] = []
 
     # --------------------------------------------------------
-    # Concurrent requests
+    # CURRENT PORTAL
     # --------------------------------------------------------
-
-    with ThreadPoolExecutor(
-        max_workers=6
-    ) as executor:
-
-        future_map = {
-
-            executor.submit(
-                parse_city_page,
-                city,
-                page,
-            ): (
-                city,
-                page,
-            )
-
-            for city, page in tasks
-        }
-
-        for future in as_completed(
-            future_map
-        ):
-
-            city, page = (
-                future_map[
-                    future
-                ]
-            )
-
-            try:
-
-                records = (
-                    future.result()
-                )
-
-                if records:
-
-                    jobs.extend(
-                        records
-                    )
-
-            except Exception as exc:
-
-                print(
-                    "[AICTE] parser failed "
-                    f"{city} page {page}: "
-                    f"{exc}"
-                )
-
-    jobs = deduplicate(
-        jobs
-    )
-
-    # --------------------------------------------------------
-    # Prefer records with real deadlines
-    # --------------------------------------------------------
-
-    def sort_key(
-        item: Dict[str, Any]
-    ):
-
-        deadline = clean_text(
-            item.get(
-                "deadline",
-                "",
-            )
-        )
-
-        has_deadline = (
-            deadline
-            and
-            deadline
-            != "See official listing"
-        )
-
-        return (
-            0
-            if has_deadline
-            else 1
-        )
-
-    jobs.sort(
-        key=sort_key
-    )
-
-    if max_results > 0:
-
-        jobs = jobs[
-            :max_results
-        ]
 
     print(
-        "[AICTE] collected "
-        f"{len(jobs)} live public "
-        "internship listings"
-    )
-
-    return jobs
-
-
-# ============================================================
-# SIMPLE HEALTH CHECK
-# ============================================================
-
-def aicte_source_health() -> Dict[str, Any]:
-
-    """
-    Lightweight health check.
-
-    This does not require login.
-    """
-
-    test_city = "Salem"
-
-    url = city_url(
-        test_city,
-        1,
+        "[AICTE] Checking current National Internship Portal..."
     )
 
     try:
-
-        response = SESSION.get(
-            url,
-            timeout=TIMEOUT,
-            allow_redirects=True,
+        html = fetch(
+            AICTE_LISTING_URL
         )
 
-        return {
+        current_links = find_current_detail_links(
+            html
+        )
 
-            "source": AICTE_SOURCE_NAME,
+        print(
+            f"[AICTE] Current portal exposed "
+            f"{len(current_links)} detail links"
+        )
 
-            "ok": (
-                response.ok
-                and
-                bool(
-                    response.text
-                )
-            ),
+        if current_links:
 
-            "status_code": (
-                response.status_code
-            ),
+            current_links = current_links[
+                :max_results
+            ]
 
-            "url": url,
-        }
+            with ThreadPoolExecutor(
+                max_workers=8
+            ) as executor:
+
+                futures = [
+                    executor.submit(
+                        parse_current_detail_page,
+                        url,
+                    )
+                    for url in current_links
+                ]
+
+                for future in as_completed(
+                    futures
+                ):
+                    try:
+                        result = future.result()
+
+                        if result:
+                            all_results.append(
+                                result
+                            )
+
+                    except Exception as exc:
+                        print(
+                            f"[AICTE] detail parser error: "
+                            f"{exc}"
+                        )
 
     except Exception as exc:
+        print(
+            f"[AICTE] current portal failed: {exc}"
+        )
 
-        return {
+    # --------------------------------------------------------
+    # OLD PUBLIC CITY FALLBACK
+    # --------------------------------------------------------
 
-            "source": AICTE_SOURCE_NAME,
+    if len(all_results) < max_results:
 
-            "ok": False,
+        print(
+            "[AICTE] Trying legacy public city listings "
+            "as a fallback..."
+        )
 
-            "status_code": None,
+        cities_to_check = CITIES
 
-            "url": url,
+        with ThreadPoolExecutor(
+            max_workers=8
+        ) as executor:
 
-            "error": str(exc),
-        }
+            futures = []
 
+            for city in cities_to_check:
+                for page in range(
+                    1,
+                    max_pages + 1,
+                ):
+                    futures.append(
+                        executor.submit(
+                            fetch_old_city,
+                            city,
+                            page,
+                        )
+                    )
 
-# ============================================================
-# PUBLIC ALIAS
-# ============================================================
+            for future in as_completed(
+                futures
+            ):
+                try:
+                    results = future.result()
 
-def fetch_aicte_internships(
-    cities: Optional[
-        List[str]
-    ] = None,
-) -> List[
-    Dict[str, Any]
-]:
+                    if results:
+                        all_results.extend(
+                            results
+                        )
 
-    return get_aicte_opportunities(
-        cities=cities
+                    if (
+                        len(all_results)
+                        >= max_results
+                    ):
+                        break
+
+                except Exception as exc:
+                    print(
+                        f"[AICTE] legacy parser error: "
+                        f"{exc}"
+                    )
+
+    all_results = deduplicate(
+        all_results
     )
 
+    all_results = validate(
+        all_results
+    )
+
+    all_results = all_results[
+        :max_results
+    ]
+
+    print(
+        f"[AICTE] Final live listings added: "
+        f"{len(all_results)}"
+    )
+
+    return all_results
+
 
 # ============================================================
-# LOCAL TEST
+# OPTIONAL DIRECT TEST
 # ============================================================
 
 if __name__ == "__main__":
+    results = get_aicte_opportunities(
+        max_pages=1,
+        max_results=20,
+    )
 
+    print()
     print(
-        "AICTE source health:"
+        f"AICTE test result count: {len(results)}"
     )
 
-    print(
-        aicte_source_health()
-    )
-
-    print(
-        "\nCollecting AICTE internships..."
-    )
-
-    records = (
-        get_aicte_opportunities(
-            cities=[
-                "Salem",
-                "Chennai",
-                "Coimbatore",
-                "Bangalore",
-                "Hyderabad",
-            ],
-            max_pages=1,
-            max_results=20,
-        )
-    )
-
-    print(
-        f"\nCollected: {len(records)}"
-    )
-
-    for record in records:
-
+    for item in results[:10]:
         print(
-            "\n--------------------------------"
-        )
-
-        print(
-            "TITLE:",
-            record.get(
-                "title"
-            ),
-        )
-
-        print(
-            "ORGANIZATION:",
-            record.get(
-                "organization"
-            ),
-        )
-
-        print(
-            "FIELD:",
-            record.get(
-                "field"
-            ),
-        )
-
-        print(
-            "LOCATION:",
-            record.get(
-                "location"
-            ),
-        )
-
-        print(
-            "MODE:",
-            record.get(
-                "mode"
-            ),
-        )
-
-        print(
-            "DEADLINE:",
-            record.get(
-                "deadline"
-            ),
-        )
-
-        print(
-            "SOURCE:",
-            record.get(
-                "source"
-            ),
-        )
-
-        print(
-            "URL:",
-            record.get(
-                "url"
-            ),
+            f"- {item.get('title')} | "
+            f"{item.get('organization')} | "
+            f"{item.get('url')}"
         )
