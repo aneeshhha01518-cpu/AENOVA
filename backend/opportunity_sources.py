@@ -92,7 +92,11 @@ VERIFIED_SOURCES = {
     "Unstop": {
         "website": "https://unstop.com/",
         "real_public_listings": True,
-    }
+    },
+    "AICTE National Internship Portal": {
+        "website": "https://internship.aicte-india.org/",
+        "real_public_listings": True,
+    },
 }
 
 VALID_CATEGORIES = {
@@ -2510,7 +2514,7 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
         try:
 
             aicte_results = get_aicte_opportunities(
-                max_pages=1,
+                max_pages=2,
                 max_results=120,
             )
 
