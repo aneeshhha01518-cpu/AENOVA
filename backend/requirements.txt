@@ -3,5 +3,4 @@ uvicorn[standard]
 supabase
 python-dotenv
 requests
-google-genai
 beautifulsoup4
