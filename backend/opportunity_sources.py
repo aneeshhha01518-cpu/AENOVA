@@ -1,8 +1,9 @@
 """
 AENOVA - LIVE OPPORTUNITY COLLECTOR
 
-Source:
+Sources:
     Unstop
+    AICTE National Internship Portal
 
 Categories:
     Hackathons
@@ -15,7 +16,7 @@ IMPORTANT:
     - No fake opportunities
     - No fake organizations
     - Categories remain separate
-    - Original Unstop URLs are preserved
+    - Original source URLs are preserved
     - Organization is shown only when confidently extracted
     - If organization cannot be verified, we use:
           "Organization not available"
@@ -32,6 +33,17 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+
+# ============================================================
+# AICTE GOVERNMENT SOURCE
+# ============================================================
+
+try:
+    from aicte_sources import get_aicte_opportunities
+except Exception as exc:
+    get_aicte_opportunities = None
+    print(f"[AICTE] connector unavailable: {exc}")
 
 
 # ============================================================
@@ -1692,6 +1704,12 @@ def enrich_one_organization(
     organization safely.
     """
 
+    # AICTE records already contain their source and organization.
+    # Do not send government-source URLs through the Unstop
+    # organization parser.
+    if item.get("source") != "Unstop":
+        return item
+
     url = item.get(
         "url",
         "",
@@ -2268,198 +2286,176 @@ def deduplicate(
 def validate_opportunities(
     opportunities: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
+    """
+    Validate normalized opportunities from all connected sources.
+
+    Currently supported sources:
+        - Unstop
+        - AICTE National Internship Portal
+
+    Source-specific URL rules are applied so one source's rules
+    cannot accidentally delete another source's records.
+    """
 
     final = []
 
     for item in opportunities:
 
+        source = clean_text(
+            item.get("source", "")
+        )
+
         category = clean_text(
-            item.get(
-                "category",
-                "",
-            )
+            item.get("category", "")
         )
 
         title = clean_title(
-            item.get(
-                "title",
-                "",
-            )
+            item.get("title", "")
         )
 
         url = clean_text(
-            item.get(
-                "url",
-                "",
-            )
+            item.get("url", "")
         )
 
-        if category not in VALID_CATEGORIES:
+        if not title or len(title) < 4:
             continue
 
-        if not title:
+        if not url.startswith("http"):
             continue
 
-        if len(title) < 4:
-            continue
+        # ----------------------------------------------------
+        # UNSTOP
+        # ----------------------------------------------------
 
-        if not url.startswith(
-            "http"
-        ):
-            continue
+        if source == "Unstop":
 
-        if not is_unstop_host(
-            url
-        ):
-            continue
-
-        if not matches_category_url(
-            url,
-            category,
-        ):
-            continue
-
-        if category == "Internship":
-
-            combined = (
-                title
-                + " "
-                + url
-                + " "
-                + clean_text(
-                    item.get(
-                        "description",
-                        "",
-                    )
-                )
-            )
-
-            if not is_probably_internship(
-                combined,
-                url,
-            ):
+            if category not in VALID_CATEGORIES:
                 continue
 
+            if not is_unstop_host(url):
+                continue
+
+            if not matches_category_url(url, category):
+                continue
+
+            if category == "Internship":
+
+                combined = (
+                    title
+                    + " "
+                    + url
+                    + " "
+                    + clean_text(
+                        item.get("description", "")
+                    )
+                )
+
+                if not is_probably_internship(
+                    combined,
+                    url,
+                ):
+                    continue
+
+        # ----------------------------------------------------
+        # AICTE GOVERNMENT PORTAL
+        # ----------------------------------------------------
+
+        elif source == "AICTE National Internship Portal":
+
+            if category != "Internship":
+                continue
+
+            try:
+                host = (
+                    urlparse(url)
+                    .netloc
+                    .lower()
+                )
+            except Exception:
+                continue
+
+            if host not in {
+                "internship.aicte-india.org",
+                "www.internship.aicte-india.org",
+            }:
+                continue
+
+        else:
+            # Unknown sources are not allowed into the live
+            # recommendation pool until they are explicitly
+            # integrated and validated.
+            continue
+
         organization = clean_organization(
-            item.get(
-                "organization",
-                "",
-            )
+            item.get("organization", "")
         )
 
         if not organization:
+            organization = UNKNOWN_ORGANIZATION
 
-            organization = (
-                UNKNOWN_ORGANIZATION
+        field = clean_text(
+            item.get("field", "")
+        )
+
+        if not field:
+            field = extract_field(
+                f"{title} {item.get('description', '')}"
             )
 
-        final.append(
-            {
-                "title": title,
-                "description": clean_description(
-                    item.get(
-                        "description",
-                        "",
-                    )
-                ),
-                "category": category,
-                "field": (
-                    clean_text(
-                        item.get(
-                            "field",
-                            "",
-                        )
-                    )
-                    or extract_field(
-                        f"{title} "
-                        f"{item.get('description', '')}"
-                    )
-                ),
-                "eligibility": clean_text(
-                    item.get(
-                        "eligibility",
-                        "",
-                    )
-                ),
-                "organization": organization,
-                "location": (
-                    clean_text(
-                        item.get(
-                            "location",
-                            "",
-                        )
-                    )
-                    or "See official listing"
-                ),
-                "deadline": clean_text(
-                    item.get(
-                        "deadline",
-                        "",
-                    )
-                ),
-                "event_date": clean_text(
-                    item.get(
-                        "event_date",
-                        "",
-                    )
-                ),
-                "mode": (
-                    clean_text(
-                        item.get(
-                            "mode",
-                            "",
-                        )
-                    )
-                    or extract_mode(
-                        f"{title} "
-                        f"{item.get('description', '')} "
-                        f"{item.get('location', '')}"
-                    )
-                ),
-                "skills_required": clean_text(
-                    item.get(
-                        "skills_required",
-                        "",
-                    )
-                ),
-                "url": url,
-                "official_url": (
-                    clean_text(
-                        item.get(
-                            "official_url",
-                            "",
-                        )
-                    )
-                    or url
-                ),
-                "source": "Unstop",
-                "source_id": (
-                    clean_text(
-                        item.get(
-                            "source_id",
-                            "",
-                        )
-                    )
-                    or extract_source_id(
-                        url
-                    )
-                ),
-                "last_verified": (
-                    clean_text(
-                        item.get(
-                            "last_verified",
-                            "",
-                        )
-                    )
-                    or current_verification_time()
-                ),
-            }
-        )
+        official_url = clean_text(
+            item.get("official_url", "")
+        ) or url
+
+        final.append({
+            "title": title,
+            "description": clean_description(
+                item.get("description", "")
+            ),
+            "category": category,
+            "field": field,
+            "eligibility": clean_text(
+                item.get("eligibility", "")
+            ),
+            "organization": organization,
+            "location": (
+                clean_text(
+                    item.get("location", "")
+                )
+                or "See official listing"
+            ),
+            "deadline": clean_text(
+                item.get("deadline", "")
+            ),
+            "event_date": clean_text(
+                item.get("event_date", "")
+            ),
+            "mode": (
+                clean_text(
+                    item.get("mode", "")
+                )
+                or extract_mode(
+                    f"{title} "
+                    f"{item.get('description', '')} "
+                    f"{item.get('location', '')}"
+                )
+            ),
+            "skills_required": clean_text(
+                item.get("skills_required", "")
+            ),
+            "url": url,
+            "official_url": official_url,
+            "source": source,
+            "source_id": clean_text(
+                item.get("source_id", "")
+            ) or extract_source_id(url),
+            "last_verified": clean_text(
+                item.get("last_verified", "")
+            ) or current_verification_time(),
+        })
 
     return final
 
 
-# ============================================================
 # MAIN PUBLIC FUNCTION
 # ============================================================
 
@@ -2506,7 +2502,39 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
                 continue
 
     # --------------------------------------------------------
-    # 2. Deduplicate.
+    # 2. Fetch AICTE government internships.
+    # --------------------------------------------------------
+
+    if get_aicte_opportunities is not None:
+
+        try:
+
+            aicte_results = get_aicte_opportunities(
+                max_pages=1,
+                max_results=120,
+            )
+
+            if aicte_results:
+                all_opportunities.extend(
+                    aicte_results
+                )
+
+            print(
+                f"[AICTE] Added {len(aicte_results)} "
+                "government internship listings"
+            )
+
+        except Exception as exc:
+
+            # A failure in one external source must never
+            # take down the complete AENOVA collector.
+            print(
+                f"[AICTE] source failed; continuing with "
+                f"other sources: {exc}"
+            )
+
+    # --------------------------------------------------------
+    # 3. Deduplicate.
     # --------------------------------------------------------
 
     all_opportunities = deduplicate(
@@ -2514,7 +2542,7 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
     )
 
     # --------------------------------------------------------
-    # 3. Validate.
+    # 4. Validate.
     # --------------------------------------------------------
 
     all_opportunities = validate_opportunities(
@@ -2522,7 +2550,7 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
     )
 
     # --------------------------------------------------------
-    # 4. Verify organizations.
+    # 5. Verify organizations.
     # --------------------------------------------------------
 
     all_opportunities = enrich_organizations(
@@ -2530,7 +2558,7 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
     )
 
     # --------------------------------------------------------
-    # 5. Validate again.
+    # 6. Validate again.
     # --------------------------------------------------------
 
     all_opportunities = validate_opportunities(
@@ -2538,7 +2566,7 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
     )
 
     # --------------------------------------------------------
-    # 6. Stable ordering.
+    # 7. Stable ordering.
     # --------------------------------------------------------
 
     all_opportunities.sort(
@@ -2550,6 +2578,10 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
                 ),
                 99,
             ),
+            item.get(
+                "source",
+                "",
+            ).lower(),
             item.get(
                 "title",
                 "",
@@ -2569,6 +2601,20 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
     }
 
     verified = 0
+
+    source_counts = {}
+
+    for item in all_opportunities:
+
+        source_name = item.get(
+            "source",
+            "Unknown",
+        )
+
+        source_counts[source_name] = (
+            source_counts.get(source_name, 0)
+            + 1
+        )
 
     for item in all_opportunities:
 
@@ -2626,6 +2672,15 @@ def get_live_opportunities() -> List[Dict[str, Any]]:
         f"Verified orgs : {verified}/"
         f"{len(all_opportunities)}"
     )
+
+    for source_name, source_count in sorted(
+        source_counts.items()
+    ):
+
+        print(
+            f"Source         : {source_name} -> "
+            f"{source_count}"
+        )
 
     print(
         "=================================================="
