@@ -76,6 +76,13 @@ CATEGORY_URLS = {
 
 UNKNOWN_ORGANIZATION = "Organization not available"
 
+VERIFIED_SOURCES = {
+    "Unstop": {
+        "website": "https://unstop.com/",
+        "real_public_listings": True,
+    }
+}
+
 VALID_CATEGORIES = {
     "Hackathon",
     "Internship",
@@ -471,241 +478,187 @@ def extract_deadline(
 
 FIELD_KEYWORDS = {
     "Computer Science / IT": [
-        "computer science",
-        "software",
-        "web development",
-        "app development",
-        "programming",
-        "coding",
-        "developer",
-        "cybersecurity",
-        "cloud computing",
-        "devops",
-        "information technology",
+        "computer science", "computer engineering", "cse", "information technology",
+        "software engineering", "software development", "programming", "coding",
+        "web development", "app development", "frontend", "backend", "full stack",
+        "cloud computing", "devops", "cybersecurity", "cyber security",
+        "networking", "database", "mobile development", "information systems"
     ],
-
     "AI / Machine Learning / Data Science": [
-        "artificial intelligence",
-        "machine learning",
-        "deep learning",
-        "data science",
-        "data analytics",
-        "data analyst",
-        "generative ai",
-        "genai",
-        "nlp",
-        "computer vision",
+        "artificial intelligence", "machine learning", "deep learning",
+        "data science", "data analytics", "data analyst", "business analytics",
+        "generative ai", "genai", "natural language processing", "nlp",
+        "computer vision", "predictive analytics", "statistics",
+        "large language model", "llm"
     ],
-
-    "Engineering": [
-        "engineering",
-        "engineer",
-        "technology",
-        "technical",
+    "Electronics / ECE / EEE": [
+        "electronics", "electronic engineering", "ece", "eee", "electrical",
+        "embedded", "embedded systems", "iot", "internet of things",
+        "vlsi", "semiconductor", "microcontroller", "arduino",
+        "raspberry pi", "fpga", "verilog", "pcb", "circuit",
+        "power electronics", "control systems", "instrumentation", "automation"
     ],
-
-    "Mechanical Engineering": [
-        "mechanical",
-        "automobile",
-        "automotive",
-        "manufacturing",
-        "cad",
-        "robotics",
+    "Mechanical / Mechatronics / Automobile": [
+        "mechanical engineering", "mechanical", "mechatronics",
+        "automobile engineering", "automotive", "manufacturing",
+        "production engineering", "industrial engineering", "cad", "cam",
+        "solidworks", "ansys", "catia", "autocad", "3d printing",
+        "thermodynamics", "fluid mechanics", "robotics",
+        "design engineering", "product engineering"
     ],
-
-    "Electrical / Electronics": [
-        "electrical",
-        "electronics",
-        "embedded",
-        "vlsi",
-        "semiconductor",
-        "iot",
+    "Civil / Construction / Architecture": [
+        "civil engineering", "civil", "construction", "structural engineering",
+        "structural", "infrastructure", "surveying", "geotechnical",
+        "transportation engineering", "urban planning", "bim", "revit",
+        "architecture", "architectural design", "quantity surveying"
     ],
-
-    "Civil Engineering": [
-        "civil engineering",
-        "construction",
-        "structural engineering",
-        "architecture",
-        "infrastructure",
+    "Biotechnology / Biomedical / Life Sciences": [
+        "biotechnology", "biotech", "biomedical", "biomedical engineering",
+        "life sciences", "life science", "biology", "molecular biology",
+        "genetics", "genomics", "microbiology", "biochemistry",
+        "bioinformatics", "neuroscience", "clinical research"
     ],
-
-    "Commerce / Accounting": [
-        "commerce",
-        "accounting",
-        "accountant",
-        "taxation",
-        "audit",
-        "gst",
+    "Healthcare / Medicine / Nursing": [
+        "healthcare", "health care", "medicine", "medical", "clinical",
+        "hospital", "nursing", "public health", "health sciences",
+        "patient care", "medical research", "health technology"
     ],
-
-    "Finance": [
-        "finance",
-        "financial",
-        "investment",
-        "banking",
-        "fintech",
-        "stock market",
-        "economics",
+    "Pharmacy / Pharmaceutical": [
+        "pharmacy", "pharmaceutical", "pharmacology", "drug discovery",
+        "drug development", "clinical pharmacy", "pharma", "formulation"
     ],
-
-    "Business / Management": [
-        "business",
-        "management",
-        "mba",
-        "entrepreneurship",
-        "startup",
-        "business development",
-        "operations",
+    "Agriculture / Food Technology": [
+        "agriculture", "agricultural", "agri", "agritech", "agri tech",
+        "farming", "precision agriculture", "horticulture", "agronomy",
+        "food technology", "food tech", "food science", "dairy technology",
+        "veterinary", "animal science", "crop science"
     ],
-
-    "Marketing / Media": [
-        "marketing",
-        "digital marketing",
-        "social media",
-        "content",
-        "media",
-        "communications",
-        "public relations",
-        "branding",
+    "Commerce / Accounting / Tax": [
+        "commerce", "bcom", "accounting", "accountancy", "accountant",
+        "audit", "auditing", "taxation", "tax", "gst", "ca", "cost accounting",
+        "financial accounting", "corporate accounting"
     ],
-
-    "Law": [
-        "law",
-        "legal",
-        "llb",
-        "llm",
-        "moot court",
-        "advocacy",
+    "Finance / Banking / Economics": [
+        "finance", "financial", "banking", "investment", "fintech",
+        "economics", "financial services", "wealth management",
+        "risk management", "equity research", "capital markets",
+        "insurance", "credit analysis"
     ],
-
-    "Medicine / Healthcare": [
-        "medicine",
-        "medical",
-        "healthcare",
-        "health care",
-        "clinical",
-        "hospital",
-        "nursing",
-        "public health",
+    "Management / Business / Operations": [
+        "management", "business administration", "mba", "business",
+        "entrepreneurship", "startup", "operations", "supply chain",
+        "procurement", "strategy", "consulting", "business development",
+        "project management", "human resources", "hr", "people operations"
     ],
-
-    "Pharmacy": [
-        "pharmacy",
-        "pharmaceutical",
-        "pharmacology",
-        "drug discovery",
+    "Marketing / Sales / Media": [
+        "marketing", "digital marketing", "social media", "seo", "sem",
+        "advertising", "branding", "brand management", "content marketing",
+        "sales", "business development", "communications", "public relations",
+        "media", "journalism", "copywriting", "content creation"
     ],
-
-    "Biotechnology / Life Sciences": [
-        "biotechnology",
-        "biotech",
-        "life sciences",
-        "genetics",
-        "microbiology",
-        "biomedical",
+    "Design / UI UX / Creative": [
+        "design", "ui/ux", "ui ux", "user interface", "user experience",
+        "ux design", "ui design", "graphic design", "visual design",
+        "product design", "industrial design", "figma", "illustration",
+        "animation", "motion graphics", "fashion design", "interior design",
+        "creative design"
     ],
-
+    "Law / Legal / Policy": [
+        "law", "legal", "llb", "llm", "lawyer", "litigation", "moot court",
+        "legal research", "corporate law", "contract law", "compliance",
+        "intellectual property", "ip law", "cyber law", "policy",
+        "public policy", "regulatory"
+    ],
+    "Arts / Humanities / Languages": [
+        "arts", "humanities", "english", "literature", "history",
+        "philosophy", "languages", "linguistics", "writing", "creative writing",
+        "cultural studies", "liberal arts"
+    ],
+    "Psychology / Sociology / Social Sciences": [
+        "psychology", "sociology", "social science", "social sciences",
+        "social work", "anthropology", "political science", "international relations",
+        "development studies", "behavioral science", "behavioural science"
+    ],
     "Science / Research": [
-        "science",
-        "research",
-        "physics",
-        "chemistry",
-        "astronomy",
-        "scientific",
+        "science", "research", "physics", "chemistry", "mathematics",
+        "mathematical", "astronomy", "scientific research", "laboratory",
+        "research assistant", "scientist"
     ],
-
-    "Agriculture": [
-        "agriculture",
-        "agri",
-        "farming",
-        "horticulture",
-        "agricultural",
+    "Environment / Sustainability / Energy": [
+        "environment", "environmental science", "environmental engineering",
+        "sustainability", "climate", "climate change", "renewable energy",
+        "solar energy", "green energy", "esg", "conservation",
+        "waste management", "water management", "clean energy"
     ],
-
-    "Environment": [
-        "environment",
-        "environmental",
-        "climate",
-        "sustainability",
-        "renewable energy",
-        "green energy",
+    "Education / Teaching / EdTech": [
+        "education", "teaching", "teacher", "training", "trainer",
+        "pedagogy", "edtech", "education technology", "curriculum",
+        "learning and development"
     ],
-
-    "Design / Architecture": [
-        "design",
-        "ui/ux",
-        "ux",
-        "user experience",
-        "graphic design",
-        "architecture",
-        "fashion",
+    "Hospitality / Tourism / Events": [
+        "hospitality", "hotel management", "tourism", "travel",
+        "event management", "events", "culinary", "food service",
+        "restaurant management"
     ],
-
-    "Arts / Humanities": [
-        "arts",
-        "humanities",
-        "history",
-        "literature",
-        "psychology",
-        "sociology",
-        "political science",
-    ],
-
-    "Education": [
-        "education",
-        "teaching",
-        "teacher",
-        "training",
-        "pedagogy",
+    "General / Interdisciplinary": [
+        "students", "student", "graduates", "graduate", "fellowship",
+        "leadership", "innovation", "skill development",
+        "professional development"
     ],
 }
-
 
 def extract_field(
     text: str,
 ) -> str:
     """
-    Determine the broad academic/career field
-    from the opportunity text.
+    Classify an opportunity using evidence from its real listing text.
 
-    If there is not enough evidence, use:
-        "All Fields / General"
+    Multiple strong disciplines are retained so interdisciplinary
+    opportunities are not forced into a single department.
     """
 
-    text = clean_text(
-        text
-    ).lower()
+    text = clean_text(text).lower()
 
     if not text:
-        return "All Fields / General"
+        return "General / Interdisciplinary"
 
     scores = {}
 
     for field, keywords in FIELD_KEYWORDS.items():
-
         score = 0
 
         for keyword in keywords:
-
             if keyword in text:
-                score += 1
+                score += 3 if len(keyword.split()) >= 2 else 1
 
         if score:
             scores[field] = score
 
     if not scores:
-        return "All Fields / General"
+        return "General / Interdisciplinary"
 
-    return max(
-        scores,
-        key=scores.get,
+    ranked = sorted(
+        scores.items(),
+        key=lambda item: item[1],
+        reverse=True,
     )
 
+    strongest_field, strongest_score = ranked[0]
 
-# ============================================================
-# MODE EXTRACTION
-# ============================================================
+    supporting = [
+        field
+        for field, score in ranked[1:4]
+        if field != "General / Interdisciplinary"
+        and score >= max(3, strongest_score * 0.55)
+    ]
+
+    if supporting:
+        return " / ".join([
+            strongest_field,
+            *supporting,
+        ])
+
+    return strongest_field
 
 def extract_mode(
     text: str,
