@@ -667,76 +667,68 @@ function App() {
      LOAD RECOMMENDATIONS
   ======================================================= */
 
-  const loadRecommendations = async (id) => {
-    if (!id) {
-      setServerRecommendations([]);
-      return;
-    }
+  const loadRecommendations = async (id, options = {}) => {
+    if (!id) return false;
+
+    const shouldPoll = options.poll === true;
+    const maxAttempts = shouldPoll ? 20 : 1;
 
     setLoadingRecommendations(true);
-    setRecommendationMessage("");
 
     try {
-      const response = await fetch(
-        `${API}/api/recommendations/${id}`
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            data.detail ||
-            "Unable to load recommendations."
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const response = await fetch(
+          `${API}/api/recommendations/${id}`,
+          { cache: "no-store" }
         );
+
+        const data = await response.json();
+
+        if (!response.ok || data?.success === false) {
+          throw new Error(
+            data?.message || "Unable to load recommendations."
+          );
+        }
+
+        const rows = Array.isArray(data?.recommendations)
+          ? data.recommendations
+          : Array.isArray(data?.data)
+            ? data.data
+            : [];
+
+        if (rows.length > 0) {
+          setServerRecommendations(rows);
+          setRecommendationMessage("");
+          setLoadingRecommendations(false);
+          return true;
+        }
+
+        if (attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
-
-      let rows = [];
-
-      if (Array.isArray(data.recommendations)) {
-        rows = data.recommendations;
-      } else if (Array.isArray(data.data)) {
-        rows = data.data;
-      } else if (Array.isArray(data)) {
-        rows = data;
-      }
-
-      setServerRecommendations(rows);
-
-      if (rows.length === 0) {
-        setRecommendationMessage(
-          "Your profile is saved, but there are no strong matches in the current opportunity listings yet."
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Recommendation loading error:",
-        error
-      );
 
       setServerRecommendations([]);
 
       setRecommendationMessage(
-        "Your profile was saved, but personalized recommendations could not be loaded right now."
+        shouldPoll
+          ? "Your profile is saved. Your matches are still being prepared. Please refresh shortly."
+          : "Your profile is saved, but there are no strong matches in the current opportunity listings yet."
       );
-    } finally {
+
       setLoadingRecommendations(false);
+      return false;
+    } catch (error) {
+      console.error("Recommendation loading error:", error);
+      setServerRecommendations([]);
+      setRecommendationMessage(
+        "Your profile is saved, but we couldn't load your recommendations right now."
+      );
+      setLoadingRecommendations(false);
+      return false;
     }
   };
 
-  /* =======================================================
-     LOAD EXISTING RECOMMENDATIONS
-  ======================================================= */
-
-  useEffect(() => {
-    if (profileId) {
-      loadRecommendations(profileId);
-    }
-  }, [profileId]);
-
-  /* =======================================================
-     LOCAL FALLBACK
-  ======================================================= */
 
   const localRecommendations = useMemo(() => {
     return opportunities
@@ -1001,134 +993,62 @@ function App() {
   ======================================================= */
 
   const saveProfile = async () => {
-    setProfileMessage("");
-    setRecommendationMessage("");
+    if (savingProfile) return;
 
-    if (!profile.full_name.trim()) {
-      setProfileStep(1);
-      setProfileMessage(
-        "Please enter your full name."
-      );
-      return;
-    }
+    const requiredFields = [
+      ["Full Name", profile.full_name],
+      ["Email", profile.email],
+      ["College", profile.college],
+      ["Department", profile.department],
+      ["Study Year", profile.study_year],
+      ["Location", profile.location],
+      ["Skills & Interests", profile.skills || profile.interests],
+      ["Career Goal", profile.career_goal],
+    ];
 
-    if (!profile.email.trim()) {
-      setProfileStep(1);
-      setProfileMessage(
-        "Please enter your email address."
-      );
-      return;
-    }
+    const missingField = requiredFields.find(
+      ([, value]) => !String(value || "").trim()
+    );
 
-    if (!profile.college.trim()) {
-      setProfileStep(2);
-      setProfileMessage(
-        "Please enter your college name."
-      );
-      return;
-    }
-
-    if (!profile.department.trim()) {
-      setProfileStep(2);
-      setProfileMessage(
-        "Please enter your department."
-      );
-      return;
-    }
-
-    if (!profile.study_year.trim()) {
-      setProfileStep(2);
-      setProfileMessage(
-        "Please enter your study year."
-      );
-      return;
-    }
-
-    if (!profile.location.trim()) {
-      setProfileStep(3);
-      setProfileMessage(
-        "Please enter your city or location."
-      );
-      return;
-    }
-
-    if (!profile.skills.trim()) {
-      setProfileStep(4);
-      setProfileMessage(
-        "Please add at least one skill."
-      );
-      return;
-    }
-
-    if (!profile.interests.trim()) {
-      setProfileStep(4);
-      setProfileMessage(
-        "Please add your interests."
-      );
-      return;
-    }
-
-    if (!profile.career_goal.trim()) {
-      setProfileStep(5);
-      setProfileMessage(
-        "Please enter your career goal."
-      );
+    if (missingField) {
+      setProfileMessage(`Please complete ${missingField[0]}.`);
       return;
     }
 
     setSavingProfile(true);
+    setProfileMessage("Saving your profile...");
 
     try {
-      const response = await fetch(
-        `${API}/api/profile`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify(profile),
-        }
-      );
+      const response = await fetch(`${API}/api/profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+      });
 
       const data = await response.json();
 
-      if (
-        !response.ok ||
-        data.success === false
-      ) {
+      if (!response.ok || data?.success === false) {
         throw new Error(
-          data.message ||
-            data.detail ||
-            "Profile could not be saved."
+          data?.message || "Unable to save your profile."
         );
       }
 
-      let returnedProfileId =
-        data.profile_id ||
-        data.id ||
-        null;
+      const numericProfileId = Number(data.profile_id);
 
-      if (
-        !returnedProfileId &&
-        data.data &&
-        data.data.id
-      ) {
-        returnedProfileId =
-          data.data.id;
-      }
-
-      if (!returnedProfileId) {
+      if (!numericProfileId) {
         throw new Error(
-          "The backend did not return a profile ID."
+          "Profile was saved but no profile ID was returned."
         );
       }
 
-      const numericProfileId =
-        Number(returnedProfileId);
+      setProfileId(numericProfileId);
+      setProfileSaved(true);
 
-      setProfileId(
-        numericProfileId
+      localStorage.setItem(
+        "aenova_profile",
+        JSON.stringify(profile)
       );
 
       localStorage.setItem(
@@ -1136,51 +1056,47 @@ function App() {
         String(numericProfileId)
       );
 
-      localStorage.setItem(
-        "aenova_profile_saved",
-        "true"
-      );
-
-      localStorage.setItem(
-        "aenova_profile",
-        JSON.stringify(profile)
-      );
-
-      setProfileSaved(true);
-
       setProfileMessage(
-        "✓ Profile saved successfully! Creating your personalized recommendations..."
+        "✓ Profile saved successfully! Taking you to your personalized recommendations..."
       );
 
-      await loadRecommendations(
-        numericProfileId
+      setRecommendationMessage(
+        "✨ Preparing your personalized AI matches..."
       );
 
-      setProfileMessage(
-        "✓ Profile saved successfully! Your personalized recommendations are ready."
+      // Guide the student directly to AI Matches.
+      setTimeout(() => {
+        scrollToSection("recommendations");
+      }, 150);
+
+      // Recommendations are generated by the backend in the background.
+      // Poll until the new profile's recommendations are available.
+      const ready = await loadRecommendations(
+        numericProfileId,
+        { poll: true }
       );
 
-      scrollToSection(
-        "recommendations"
-      );
+      if (ready) {
+        setProfileMessage(
+          "✓ Profile saved successfully! Your personalized recommendations are ready."
+        );
+        setRecommendationMessage("");
+      } else {
+        setProfileMessage(
+          "✓ Profile saved successfully! Your matches are still being prepared."
+        );
+      }
     } catch (error) {
-      console.error(
-        "Profile save error:",
-        error
-      );
-
+      console.error("Profile save error:", error);
       setProfileMessage(
         error.message ||
-          "Unable to save your profile."
+        "Unable to save your profile. Please try again."
       );
     } finally {
       setSavingProfile(false);
     }
   };
 
-  /* =======================================================
-     FEEDBACK
-  ======================================================= */
 
   const giveFeedback = (
     opportunity,
