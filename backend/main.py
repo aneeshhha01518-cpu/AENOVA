@@ -10,7 +10,7 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -1947,23 +1947,52 @@ def opportunities():
 # SAVE PROFILE
 # ============================================================
 
+def rebuild_profile_recommendations_background(profile_id, profile_data):
+    """Build recommendations after the profile has already been saved."""
+    try:
+        profile_lock = get_profile_lock(str(profile_id))
+
+        with profile_lock:
+            live_opportunities = get_cached_opportunities()
+            recommendation_rows = save_profile_recommendations(
+                profile_id,
+                profile_data,
+                live_opportunities
+            )
+
+        save_activity(
+            profile_id=profile_id,
+            activity_type="profile_saved",
+            details="Student profile saved as a new submission."
+        )
+
+        print(
+            f"Background recommendations complete for profile "
+            f"{profile_id}: {len(recommendation_rows)}"
+        )
+
+    except Exception as error:
+        print(
+            f"Background recommendation error for profile "
+            f"{profile_id}:",
+            error
+        )
+
+
 @app.post("/api/profile")
 def save_profile(
-    profile: ProfileRequest
+    profile: ProfileRequest,
+    background_tasks: BackgroundTasks
 ):
 
     try:
-
-        email = clean_text(
-            profile.email
-        )
 
         data = {
             "full_name":
                 clean_text(profile.full_name),
 
             "email":
-                email,
+                clean_text(profile.email),
 
             "college":
                 clean_text(profile.college),
@@ -1988,98 +2017,37 @@ def save_profile(
         }
 
         # ----------------------------------------------------
-        # Find existing profile by email.
+        # IMPORTANT:
+        # Every Save is a NEW submission.
+        # Email is NOT used to find/update an old profile.
+        # Even identical data gets a new database row and ID.
         # ----------------------------------------------------
 
-        existing_result = (
+        insert_result = (
             supabase
             .table("student_profiles")
+            .insert(data)
             .select("*")
-            .eq(
-                "email",
-                email
-            )
-            .order(
-                "created_at",
-                desc=True
-            )
-            .limit(1)
             .execute()
         )
 
-        profile_row = None
-
-        if existing_result.data:
-
-            existing_profile = (
-                existing_result.data[0]
-            )
-
-            update_data = {
-                key: value
-                for key, value in data.items()
-                if key != "email"
-            }
-
-            update_result = (
-                supabase
-                .table("student_profiles")
-                .update(update_data)
-                .eq(
-                    "id",
-                    existing_profile["id"]
-                )
-                .select("*")
-                .execute()
-            )
-
-            if update_result.data:
-                profile_row = update_result.data[0]
-            else:
-                profile_row = existing_profile
-
-        else:
-
-            insert_result = (
-                supabase
-                .table("student_profiles")
-                .insert(data)
-                .select("*")
-                .execute()
-            )
-
-            if insert_result.data:
-                profile_row = insert_result.data[0]
-
-        if not profile_row:
-
+        if not insert_result.data:
             raise RuntimeError(
                 "Profile could not be saved."
             )
 
+        profile_row = insert_result.data[0]
         profile_id = profile_row["id"]
 
-        # Serialize recommendation rebuilds for the same profile so two
-        # browser requests cannot delete/insert the same rows concurrently.
-        profile_lock = get_profile_lock(str(profile_id))
-
-        with profile_lock:
-            live_opportunities = get_cached_opportunities()
-            recommendation_rows = save_profile_recommendations(
-                profile_id,
-                data,
-                live_opportunities
-            )
-
         # ----------------------------------------------------
-        # Profile activity is recorded after the recommendation rebuild.
+        # Save returns immediately.
+        # Recommendations are generated in the background.
         # ----------------------------------------------------
 
-        save_activity(
-            profile_id=profile_id,
-            activity_type="profile_saved",
-            details=
-                "Student profile created or updated."
+        background_tasks.add_task(
+            rebuild_profile_recommendations_background,
+            profile_id,
+            data
         )
 
         return {
@@ -2095,7 +2063,10 @@ def save_profile(
                 profile_row,
 
             "recommendations_saved":
-                len(recommendation_rows)
+                0,
+
+            "recommendations_pending":
+                True
         }
 
     except Exception as error:
