@@ -842,7 +842,7 @@ def parse_current_detail_page(
         "skills_required": "",
         "url": url,
         "official_url": url,
-        "source": "AICTE",
+        "source": "AICTE National Internship Portal",
         "source_id": source_id,
         "last_verified": now_utc(),
     }
@@ -1018,7 +1018,7 @@ def parse_old_city_page(
                 "skills_required": "",
                 "url": url,
                 "official_url": url,
-                "source": "AICTE",
+                "source": "AICTE National Internship Portal",
                 "source_id": source_id,
                 "last_verified": now_utc(),
             }
