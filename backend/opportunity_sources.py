@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 from urllib.parse import urljoin, urlparse
@@ -462,6 +463,450 @@ def extract_deadline(
             )
 
     return ""
+
+
+# ============================================================
+# FIELD EXTRACTION
+# ============================================================
+
+FIELD_KEYWORDS = {
+    "Computer Science / IT": [
+        "computer science",
+        "software",
+        "web development",
+        "app development",
+        "programming",
+        "coding",
+        "developer",
+        "cybersecurity",
+        "cloud computing",
+        "devops",
+        "information technology",
+    ],
+
+    "AI / Machine Learning / Data Science": [
+        "artificial intelligence",
+        "machine learning",
+        "deep learning",
+        "data science",
+        "data analytics",
+        "data analyst",
+        "generative ai",
+        "genai",
+        "nlp",
+        "computer vision",
+    ],
+
+    "Engineering": [
+        "engineering",
+        "engineer",
+        "technology",
+        "technical",
+    ],
+
+    "Mechanical Engineering": [
+        "mechanical",
+        "automobile",
+        "automotive",
+        "manufacturing",
+        "cad",
+        "robotics",
+    ],
+
+    "Electrical / Electronics": [
+        "electrical",
+        "electronics",
+        "embedded",
+        "vlsi",
+        "semiconductor",
+        "iot",
+    ],
+
+    "Civil Engineering": [
+        "civil engineering",
+        "construction",
+        "structural engineering",
+        "architecture",
+        "infrastructure",
+    ],
+
+    "Commerce / Accounting": [
+        "commerce",
+        "accounting",
+        "accountant",
+        "taxation",
+        "audit",
+        "gst",
+    ],
+
+    "Finance": [
+        "finance",
+        "financial",
+        "investment",
+        "banking",
+        "fintech",
+        "stock market",
+        "economics",
+    ],
+
+    "Business / Management": [
+        "business",
+        "management",
+        "mba",
+        "entrepreneurship",
+        "startup",
+        "business development",
+        "operations",
+    ],
+
+    "Marketing / Media": [
+        "marketing",
+        "digital marketing",
+        "social media",
+        "content",
+        "media",
+        "communications",
+        "public relations",
+        "branding",
+    ],
+
+    "Law": [
+        "law",
+        "legal",
+        "llb",
+        "llm",
+        "moot court",
+        "advocacy",
+    ],
+
+    "Medicine / Healthcare": [
+        "medicine",
+        "medical",
+        "healthcare",
+        "health care",
+        "clinical",
+        "hospital",
+        "nursing",
+        "public health",
+    ],
+
+    "Pharmacy": [
+        "pharmacy",
+        "pharmaceutical",
+        "pharmacology",
+        "drug discovery",
+    ],
+
+    "Biotechnology / Life Sciences": [
+        "biotechnology",
+        "biotech",
+        "life sciences",
+        "genetics",
+        "microbiology",
+        "biomedical",
+    ],
+
+    "Science / Research": [
+        "science",
+        "research",
+        "physics",
+        "chemistry",
+        "astronomy",
+        "scientific",
+    ],
+
+    "Agriculture": [
+        "agriculture",
+        "agri",
+        "farming",
+        "horticulture",
+        "agricultural",
+    ],
+
+    "Environment": [
+        "environment",
+        "environmental",
+        "climate",
+        "sustainability",
+        "renewable energy",
+        "green energy",
+    ],
+
+    "Design / Architecture": [
+        "design",
+        "ui/ux",
+        "ux",
+        "user experience",
+        "graphic design",
+        "architecture",
+        "fashion",
+    ],
+
+    "Arts / Humanities": [
+        "arts",
+        "humanities",
+        "history",
+        "literature",
+        "psychology",
+        "sociology",
+        "political science",
+    ],
+
+    "Education": [
+        "education",
+        "teaching",
+        "teacher",
+        "training",
+        "pedagogy",
+    ],
+}
+
+
+def extract_field(
+    text: str,
+) -> str:
+    """
+    Determine the broad academic/career field
+    from the opportunity text.
+
+    If there is not enough evidence, use:
+        "All Fields / General"
+    """
+
+    text = clean_text(
+        text
+    ).lower()
+
+    if not text:
+        return "All Fields / General"
+
+    scores = {}
+
+    for field, keywords in FIELD_KEYWORDS.items():
+
+        score = 0
+
+        for keyword in keywords:
+
+            if keyword in text:
+                score += 1
+
+        if score:
+            scores[field] = score
+
+    if not scores:
+        return "All Fields / General"
+
+    return max(
+        scores,
+        key=scores.get,
+    )
+
+
+# ============================================================
+# MODE EXTRACTION
+# ============================================================
+
+def extract_mode(
+    text: str,
+) -> str:
+    """
+    Determine whether an opportunity is online,
+    offline, hybrid, remote, or unspecified.
+    """
+
+    text = clean_text(
+        text
+    ).lower()
+
+    if not text:
+        return "See official listing"
+
+    if (
+        "work from home" in text
+        or "remote" in text
+        or "fully online" in text
+        or "100% online" in text
+    ):
+        return "Online"
+
+    if (
+        "hybrid" in text
+        or "online and offline" in text
+        or "online/offline" in text
+    ):
+        return "Hybrid"
+
+    if (
+        "offline" in text
+        or "in person" in text
+        or "on campus" in text
+    ):
+        return "Offline"
+
+    if (
+        "online" in text
+        or "virtual" in text
+    ):
+        return "Online"
+
+    return "See official listing"
+
+
+# ============================================================
+# ELIGIBILITY EXTRACTION
+# ============================================================
+
+def extract_eligibility(
+    text: str,
+) -> str:
+    """
+    Extract a conservative eligibility sentence.
+
+    We do not invent eligibility when the listing
+    does not clearly provide it.
+    """
+
+    text = clean_text(
+        text
+    )
+
+    if not text:
+        return ""
+
+    patterns = [
+        r"eligibility\s*[:\-]?\s*(.{20,300}?)(?:\s{2,}|important dates|deadline|rewards|prizes|registration)",
+
+        r"who can apply\s*[:\-]?\s*(.{20,300}?)(?:\s{2,}|important dates|deadline|rewards|prizes|registration)",
+
+        r"eligible candidates\s*[:\-]?\s*(.{20,300}?)(?:\s{2,}|important dates|deadline|rewards|prizes|registration)",
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+
+            value = clean_text(
+                match.group(1)
+            )
+
+            if value:
+
+                if len(value) > 300:
+                    value = value[:297] + "..."
+
+                return value
+
+    return ""
+
+
+# ============================================================
+# EVENT DATE EXTRACTION
+# ============================================================
+
+def extract_event_date(
+    text: str,
+) -> str:
+    """
+    Extract an event/start date when explicitly
+    present in the listing.
+    """
+
+    text = clean_text(
+        text
+    )
+
+    patterns = [
+        r"event date\s*[:\-]?\s*(.{4,80}?)(?:\s{2,}|deadline|registration|eligibility)",
+
+        r"event starts?\s*[:\-]?\s*(.{4,80}?)(?:\s{2,}|deadline|registration)",
+
+        r"starts?\s+on\s+(.{4,80}?)(?:\s{2,}|deadline|registration)",
+
+        r"date\s*[:\-]?\s*(\d{1,2}\s+[A-Za-z]{3,9}\s*\d{2,4})",
+    ]
+
+    for pattern in patterns:
+
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        if match:
+
+            value = clean_text(
+                match.group(1)
+            )
+
+            if value:
+                return value
+
+    return ""
+
+
+# ============================================================
+# SOURCE ID
+# ============================================================
+
+def extract_source_id(
+    url: str,
+) -> str:
+    """
+    Create a stable source identifier from the
+    official Unstop URL.
+
+    This is used later for duplicate detection
+    across refreshes.
+    """
+
+    try:
+
+        path = (
+            urlparse(url)
+            .path
+            .strip("/")
+        )
+
+        if not path:
+            return ""
+
+        parts = [
+            part
+            for part in path.split("/")
+            if part
+        ]
+
+        if not parts:
+            return ""
+
+        return parts[-1]
+
+    except Exception:
+
+        return ""
+
+
+# ============================================================
+# LAST VERIFIED
+# ============================================================
+
+def current_verification_time() -> str:
+    """
+    UTC timestamp showing when AENOVA verified
+    the opportunity.
+    """
+
+    return datetime.now(
+        timezone.utc
+    ).isoformat()
 
 
 # ============================================================
@@ -1121,8 +1566,6 @@ def extract_organization_from_detail(
         )
 
         # Look at the next heading elements in document order.
-        # On current Unstop detail pages the organization/company
-        # is presented immediately below the opportunity title.
         headings = soup.find_all(
             [
                 "h2",
@@ -1175,7 +1618,6 @@ def extract_organization_from_detail(
             ):
                 continue
 
-            # Avoid generic sections.
             generic = {
                 "eligibility",
                 "details",
@@ -1202,9 +1644,6 @@ def extract_organization_from_detail(
     # Look for a short anchor near the top of the page.
     # --------------------------------------------------------
 
-    # We deliberately only inspect anchors before the first
-    # large "Details" section. This prevents description text
-    # from being mistaken for an organization.
     detail_marker = None
 
     for element in soup.find_all(
@@ -1267,7 +1706,6 @@ def extract_organization_from_detail(
         ) > 8:
             continue
 
-        # Reject obvious navigation.
         navigation = {
             "login",
             "sign up",
@@ -1285,10 +1723,6 @@ def extract_organization_from_detail(
             continue
 
         return candidate
-
-    # --------------------------------------------------------
-    # Nothing confidently found.
-    # --------------------------------------------------------
 
     return ""
 
@@ -1311,6 +1745,7 @@ def enrich_one_organization(
     )
 
     if not url:
+
         item["organization"] = (
             UNKNOWN_ORGANIZATION
         )
@@ -1355,7 +1790,7 @@ def enrich_one_organization(
                 f"-> not confidently available"
             )
 
-    except Exception as exc:
+    except Exception:
 
         item["organization"] = (
             UNKNOWN_ORGANIZATION
@@ -1519,6 +1954,28 @@ def parse_opportunity(
         card_text
     )
 
+    mode = extract_mode(
+        card_text
+    )
+
+    field = extract_field(
+        f"{title} {card_text}"
+    )
+
+    eligibility = extract_eligibility(
+        card_text
+    )
+
+    event_date = extract_event_date(
+        card_text
+    )
+
+    source_id = extract_source_id(
+        url
+    )
+
+    verified_at = current_verification_time()
+
     description_parts = []
 
     if location != "See official listing":
@@ -1552,13 +2009,19 @@ def parse_opportunity(
             description
         ),
         "category": category,
+        "field": field,
+        "eligibility": eligibility,
         "organization": UNKNOWN_ORGANIZATION,
         "location": location,
         "deadline": deadline,
-        "event_date": "",
+        "event_date": event_date,
+        "mode": mode,
         "skills_required": "",
         "url": url,
+        "official_url": url,
         "source": "Unstop",
+        "source_id": source_id,
+        "last_verified": verified_at,
     }
 
 
@@ -1704,13 +2167,25 @@ def parse_category_page(
                         f"listed on Unstop."
                     ),
                     "category": category,
+                    "field": extract_field(
+                        title
+                    ),
+                    "eligibility": "",
                     "organization": UNKNOWN_ORGANIZATION,
                     "location": "See official listing",
                     "deadline": "",
                     "event_date": "",
+                    "mode": "See official listing",
                     "skills_required": "",
                     "url": url,
+                    "official_url": url,
                     "source": "Unstop",
+                    "source_id": extract_source_id(
+                        url
+                    ),
+                    "last_verified": (
+                        current_verification_time()
+                    ),
                 }
             )
 
@@ -1935,6 +2410,24 @@ def validate_opportunities(
                     )
                 ),
                 "category": category,
+                "field": (
+                    clean_text(
+                        item.get(
+                            "field",
+                            "",
+                        )
+                    )
+                    or extract_field(
+                        f"{title} "
+                        f"{item.get('description', '')}"
+                    )
+                ),
+                "eligibility": clean_text(
+                    item.get(
+                        "eligibility",
+                        "",
+                    )
+                ),
                 "organization": organization,
                 "location": (
                     clean_text(
@@ -1957,6 +2450,19 @@ def validate_opportunities(
                         "",
                     )
                 ),
+                "mode": (
+                    clean_text(
+                        item.get(
+                            "mode",
+                            "",
+                        )
+                    )
+                    or extract_mode(
+                        f"{title} "
+                        f"{item.get('description', '')} "
+                        f"{item.get('location', '')}"
+                    )
+                ),
                 "skills_required": clean_text(
                     item.get(
                         "skills_required",
@@ -1964,7 +2470,36 @@ def validate_opportunities(
                     )
                 ),
                 "url": url,
+                "official_url": (
+                    clean_text(
+                        item.get(
+                            "official_url",
+                            "",
+                        )
+                    )
+                    or url
+                ),
                 "source": "Unstop",
+                "source_id": (
+                    clean_text(
+                        item.get(
+                            "source_id",
+                            "",
+                        )
+                    )
+                    or extract_source_id(
+                        url
+                    )
+                ),
+                "last_verified": (
+                    clean_text(
+                        item.get(
+                            "last_verified",
+                            "",
+                        )
+                    )
+                    or current_verification_time()
+                ),
             }
         )
 
@@ -2187,6 +2722,11 @@ if __name__ == "__main__":
         )
 
         print(
+            f"   Field        : "
+            f"{item.get('field', '')}"
+        )
+
+        print(
             f"   Organization : "
             f"{item['organization']}"
         )
@@ -2197,13 +2737,43 @@ if __name__ == "__main__":
         )
 
         print(
+            f"   Mode         : "
+            f"{item.get('mode', '')}"
+        )
+
+        print(
+            f"   Eligibility  : "
+            f"{item.get('eligibility', '')}"
+        )
+
+        print(
             f"   Deadline     : "
             f"{item['deadline']}"
         )
 
         print(
-            f"   URL          : "
-            f"{item['url']}"
+            f"   Event Date   : "
+            f"{item.get('event_date', '')}"
+        )
+
+        print(
+            f"   Source       : "
+            f"{item.get('source', '')}"
+        )
+
+        print(
+            f"   Source ID    : "
+            f"{item.get('source_id', '')}"
+        )
+
+        print(
+            f"   Official URL : "
+            f"{item.get('official_url', '')}"
+        )
+
+        print(
+            f"   Verified     : "
+            f"{item.get('last_verified', '')}"
         )
 
         print()
