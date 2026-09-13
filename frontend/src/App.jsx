@@ -7,8 +7,24 @@ import HeroStudent from "./assets/HeroStudent.png";
 const API = "https://aenova.onrender.com";
 
 /* =========================================================
-   HELPERS
-   ========================================================= */
+   DEFAULT PROFILE
+========================================================= */
+
+const EMPTY_PROFILE = {
+  full_name: "",
+  email: "",
+  college: "",
+  department: "",
+  study_year: "",
+  location: "",
+  skills: "",
+  interests: "",
+  career_goal: "",
+};
+
+/* =========================================================
+   TEXT HELPERS
+========================================================= */
 
 function normalizeText(value) {
   return String(value || "")
@@ -21,8 +37,8 @@ function normalizeText(value) {
 function tokenize(value) {
   return normalizeText(value)
     .split(/[\s,;/|]+/)
-    .map((word) => word.trim())
-    .filter((word) => word.length >= 2);
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
 }
 
 function uniqueWords(value) {
@@ -30,16 +46,21 @@ function uniqueWords(value) {
 }
 
 /* =========================================================
-   REAL OPPORTUNITY RECOMMENDATION ENGINE
-   Supports all departments and fields.
-   ========================================================= */
+   LOCAL RECOMMENDATION ENGINE
+   Used as a visual fallback if backend recommendation
+   data is temporarily unavailable.
+========================================================= */
 
-function calculateRecommendation(opportunity, profile, feedback) {
-  const skills = uniqueWords(profile.skills);
-  const interests = uniqueWords(profile.interests);
-  const career = uniqueWords(profile.career_goal);
-  const department = uniqueWords(profile.department);
-  const location = uniqueWords(profile.location);
+function calculateRecommendation(
+  opportunity,
+  profile,
+  feedback
+) {
+  const studentSkills = uniqueWords(profile.skills);
+  const studentInterests = uniqueWords(profile.interests);
+  const careerWords = uniqueWords(profile.career_goal);
+  const departmentWords = uniqueWords(profile.department);
+  const locationWords = uniqueWords(profile.location);
 
   const opportunityText = normalizeText(
     [
@@ -55,281 +76,61 @@ function calculateRecommendation(opportunity, profile, feedback) {
     ].join(" ")
   );
 
-  const opportunityTokens = new Set(
-    uniqueWords(opportunityText)
-  );
-
-  const matchedSkills = skills.filter(
+  const skillMatches = studentSkills.filter(
     (word) =>
-      opportunityTokens.has(word) ||
       opportunityText.includes(word)
   );
 
-  const matchedInterests = interests.filter(
-    (word) =>
-      opportunityTokens.has(word) ||
-      opportunityText.includes(word)
-  );
+  const interestMatches =
+    studentInterests.filter(
+      (word) =>
+        opportunityText.includes(word)
+    );
 
-  const matchedCareer = career.filter(
-    (word) =>
-      opportunityTokens.has(word) ||
-      opportunityText.includes(word)
-  );
+  const careerMatches =
+    careerWords.filter(
+      (word) =>
+        opportunityText.includes(word)
+    );
 
-  const matchedDepartment = department.filter(
-    (word) =>
-      opportunityTokens.has(word) ||
-      opportunityText.includes(word)
-  );
+  const departmentMatches =
+    departmentWords.filter(
+      (word) =>
+        opportunityText.includes(word)
+    );
 
-  const matchedLocation = location.filter(
-    (word) =>
-      opportunityTokens.has(word) ||
-      opportunityText.includes(word)
-  );
+  const locationMatches =
+    locationWords.filter(
+      (word) =>
+        opportunityText.includes(word)
+    );
 
   let score = 20;
 
   score += Math.min(
-    matchedSkills.length * 12,
+    skillMatches.length * 12,
     36
   );
 
   score += Math.min(
-    matchedInterests.length * 9,
+    interestMatches.length * 9,
     27
   );
 
   score += Math.min(
-    matchedCareer.length * 8,
+    careerMatches.length * 8,
     16
   );
 
   score += Math.min(
-    matchedDepartment.length * 12,
+    departmentMatches.length * 10,
     20
   );
 
   score += Math.min(
-    matchedLocation.length * 5,
+    locationMatches.length * 5,
     10
   );
-
-  const careerGoal = normalizeText(
-    profile.career_goal
-  );
-
-  const careerGroups = [
-    [
-      [
-        "software",
-        "developer",
-        "development",
-        "coding",
-        "programming",
-      ],
-      [
-        "software",
-        "developer",
-        "development",
-        "coding",
-        "programming",
-      ],
-    ],
-    [
-      [
-        "data",
-        "analytics",
-        "analyst",
-        "statistics",
-      ],
-      [
-        "data",
-        "analytics",
-        "analyst",
-        "statistics",
-      ],
-    ],
-    [
-      [
-        "ai",
-        "artificial intelligence",
-        "machine learning",
-        "ml",
-      ],
-      [
-        "ai",
-        "artificial intelligence",
-        "machine learning",
-        "ml",
-      ],
-    ],
-    [
-      [
-        "finance",
-        "financial",
-        "accounting",
-        "investment",
-      ],
-      [
-        "finance",
-        "financial",
-        "accounting",
-        "investment",
-      ],
-    ],
-    [
-      [
-        "marketing",
-        "branding",
-        "digital marketing",
-      ],
-      [
-        "marketing",
-        "branding",
-        "digital marketing",
-      ],
-    ],
-    [
-      [
-        "design",
-        "ui",
-        "ux",
-        "graphic",
-        "creative",
-      ],
-      [
-        "design",
-        "ui",
-        "ux",
-        "graphic",
-        "creative",
-      ],
-    ],
-    [
-      [
-        "mechanical",
-        "automobile",
-        "manufacturing",
-        "cad",
-        "solidworks",
-      ],
-      [
-        "mechanical",
-        "automobile",
-        "manufacturing",
-        "cad",
-        "solidworks",
-      ],
-    ],
-    [
-      [
-        "civil",
-        "construction",
-        "structural",
-        "architecture",
-      ],
-      [
-        "civil",
-        "construction",
-        "structural",
-        "architecture",
-      ],
-    ],
-    [
-      [
-        "electronics",
-        "embedded",
-        "ece",
-        "electrical",
-        "iot",
-        "vlsi",
-      ],
-      [
-        "electronics",
-        "embedded",
-        "ece",
-        "electrical",
-        "iot",
-        "vlsi",
-      ],
-    ],
-    [
-      [
-        "biotech",
-        "biotechnology",
-        "biology",
-        "pharma",
-        "life science",
-      ],
-      [
-        "biotech",
-        "biotechnology",
-        "biology",
-        "pharma",
-        "life science",
-      ],
-    ],
-    [
-      [
-        "law",
-        "legal",
-        "lawyer",
-        "compliance",
-      ],
-      [
-        "law",
-        "legal",
-        "lawyer",
-        "compliance",
-      ],
-    ],
-    [
-      [
-        "agriculture",
-        "agri",
-        "farming",
-        "agritech",
-      ],
-      [
-        "agriculture",
-        "agri",
-        "farming",
-        "agritech",
-      ],
-    ],
-    [
-      [
-        "management",
-        "business",
-        "mba",
-        "operations",
-        "hr",
-      ],
-      [
-        "management",
-        "business",
-        "mba",
-        "operations",
-        "hr",
-      ],
-    ],
-  ];
-
-  careerGroups.forEach(([goalWords, opportunityWords]) => {
-    const goalMatch = goalWords.some(
-      (word) => careerGoal.includes(word)
-    );
-
-    const opportunityMatch = opportunityWords.some(
-      (word) => opportunityText.includes(word)
-    );
-
-    if (goalMatch && opportunityMatch) {
-      score += 10;
-    }
-  });
 
   const feedbackKey = String(
     opportunity.id ||
@@ -341,7 +142,9 @@ function calculateRecommendation(opportunity, profile, feedback) {
     score += 12;
   }
 
-  if (feedback[feedbackKey] === "dislike") {
+  if (
+    feedback[feedbackKey] === "dislike"
+  ) {
     score -= 20;
   }
 
@@ -352,35 +155,35 @@ function calculateRecommendation(opportunity, profile, feedback) {
 
   const reasons = [];
 
-  if (matchedSkills.length) {
+  if (skillMatches.length) {
     reasons.push(
-      `matches your skills: ${matchedSkills
+      `matches your skills: ${skillMatches
         .slice(0, 3)
         .join(", ")}`
     );
   }
 
-  if (matchedInterests.length) {
+  if (interestMatches.length) {
     reasons.push(
-      `matches your interests: ${matchedInterests
+      `matches your interests: ${interestMatches
         .slice(0, 3)
         .join(", ")}`
     );
   }
 
-  if (matchedCareer.length) {
+  if (careerMatches.length) {
     reasons.push(
       "connects with your career goal"
     );
   }
 
-  if (matchedDepartment.length) {
+  if (departmentMatches.length) {
     reasons.push(
       "is relevant to your department"
     );
   }
 
-  if (matchedLocation.length) {
+  if (locationMatches.length) {
     reasons.push(
       "has a location connection"
     );
@@ -406,15 +209,15 @@ function calculateRecommendation(opportunity, profile, feedback) {
     score,
     level,
     reasons,
-    matchedSkills,
-    matchedInterests,
-    matchedCareer,
+    skillMatches,
+    interestMatches,
+    careerMatches,
   };
 }
 
 /* =========================================================
-   MARKDOWN / URL RENDERING
-   ========================================================= */
+   MARKDOWN / URL FORMATTER
+========================================================= */
 
 function formatInlineText(text) {
   if (!text) return null;
@@ -457,6 +260,7 @@ function formatInlineText(text) {
       while (/[.,!?;:]$/.test(cleanUrl)) {
         ending =
           cleanUrl.slice(-1) + ending;
+
         cleanUrl = cleanUrl.slice(0, -1);
       }
 
@@ -515,8 +319,6 @@ function formatInlineText(text) {
               "rgba(99,88,232,0.10)",
             padding: "2px 5px",
             borderRadius: "4px",
-            fontFamily:
-              "Consolas, Monaco, monospace",
           }}
         >
           {part.slice(1, -1)}
@@ -524,7 +326,11 @@ function formatInlineText(text) {
       );
     }
 
-    return <span key={index}>{part}</span>;
+    return (
+      <span key={index}>
+        {part}
+      </span>
+    );
   });
 }
 
@@ -533,11 +339,11 @@ function renderAIText(text) {
 
   const lines = String(text).split("\n");
 
+  const elements = [];
+
   let insideCode = false;
   let codeLanguage = "";
   let codeLines = [];
-
-  const elements = [];
 
   const addCodeBlock = () => {
     elements.push(
@@ -573,8 +379,6 @@ function renderAIText(text) {
             overflowX: "auto",
             fontSize: "12px",
             lineHeight: "1.6",
-            fontFamily:
-              "Consolas, Monaco, monospace",
             whiteSpace: "pre-wrap",
           }}
         >
@@ -602,6 +406,7 @@ function renderAIText(text) {
         insideCode = false;
         addCodeBlock();
       }
+
       return;
     }
 
@@ -617,6 +422,7 @@ function renderAIText(text) {
           style={{ height: "7px" }}
         />
       );
+
       return;
     }
 
@@ -635,6 +441,7 @@ function renderAIText(text) {
           )}
         </h3>
       );
+
       return;
     }
 
@@ -642,9 +449,10 @@ function renderAIText(text) {
       trimmed.startsWith("## ") ||
       trimmed.startsWith("### ")
     ) {
-      const heading = trimmed.startsWith("### ")
-        ? trimmed.slice(4)
-        : trimmed.slice(3);
+      const heading =
+        trimmed.startsWith("### ")
+          ? trimmed.slice(4)
+          : trimmed.slice(3);
 
       elements.push(
         <h4
@@ -658,6 +466,7 @@ function renderAIText(text) {
           {formatInlineText(heading)}
         </h4>
       );
+
       return;
     }
 
@@ -676,6 +485,7 @@ function renderAIText(text) {
           }}
         />
       );
+
       return;
     }
 
@@ -693,6 +503,7 @@ function renderAIText(text) {
           }}
         >
           <span>•</span>
+
           <span>
             {formatInlineText(
               trimmed.slice(2)
@@ -700,6 +511,7 @@ function renderAIText(text) {
           </span>
         </div>
       );
+
       return;
     }
 
@@ -717,7 +529,10 @@ function renderAIText(text) {
             marginBottom: "6px",
           }}
         >
-          <strong>{numbered[1]}.</strong>
+          <strong>
+            {numbered[1]}.
+          </strong>
+
           <span>
             {formatInlineText(
               numbered[2]
@@ -725,13 +540,16 @@ function renderAIText(text) {
           </span>
         </div>
       );
+
       return;
     }
 
     elements.push(
       <div
         key={index}
-        style={{ marginBottom: "7px" }}
+        style={{
+          marginBottom: "7px",
+        }}
       >
         {formatInlineText(trimmed)}
       </div>
@@ -747,17 +565,81 @@ function renderAIText(text) {
 
 /* =========================================================
    MAIN APP
-   ========================================================= */
+========================================================= */
 
 function App() {
   /* =======================================================
-     OPPORTUNITIES
-     ======================================================= */
+     PROFILE
+  ======================================================= */
 
-  const [
-    selectedCategory,
-    setSelectedCategory,
-  ] = useState("All");
+  const [profile, setProfile] =
+    useState(() => {
+      try {
+        const saved =
+          localStorage.getItem(
+            "aenova_profile"
+          );
+
+        return saved
+          ? {
+              ...EMPTY_PROFILE,
+              ...JSON.parse(saved),
+            }
+          : EMPTY_PROFILE;
+      } catch {
+        return EMPTY_PROFILE;
+      }
+    });
+
+  const [profileId, setProfileId] =
+    useState(() => {
+      const saved =
+        localStorage.getItem(
+          "aenova_profile_id"
+        );
+
+      return saved
+        ? Number(saved)
+        : null;
+    });
+
+  const [profileStep, setProfileStep] =
+    useState(() => {
+      const saved =
+        localStorage.getItem(
+          "aenova_profile_step"
+        );
+
+      return saved
+        ? Number(saved)
+        : 1;
+    });
+
+  const [profileMessage, setProfileMessage] =
+    useState("");
+
+  const [savingProfile, setSavingProfile] =
+    useState(false);
+
+  const [profileSaved, setProfileSaved] =
+    useState(() => {
+      return (
+        localStorage.getItem(
+          "aenova_profile_saved"
+        ) === "true"
+      );
+    });
+
+  /* =======================================================
+     BACKEND
+  ======================================================= */
+
+  const [backendMessage, setBackendMessage] =
+    useState("");
+
+  /* =======================================================
+     OPPORTUNITIES
+  ======================================================= */
 
   const [
     opportunities,
@@ -769,154 +651,117 @@ function App() {
     setLoadingOpportunities,
   ] = useState(true);
 
+  const [
+    selectedCategory,
+    setSelectedCategory,
+  ] = useState("All");
+
   /* =======================================================
-     PROFILE
-     ======================================================= */
+     SERVER RECOMMENDATIONS
+  ======================================================= */
 
   const [
-    profile,
-    setProfile,
-  ] = useState(() => {
-    try {
-      const saved =
-        localStorage.getItem(
-          "aenova_profile"
-        );
-
-      return saved
-        ? JSON.parse(saved)
-        : {
-            full_name: "",
-            email: "",
-            college: "",
-            department: "",
-            study_year: "",
-            location: "",
-            skills: "",
-            interests: "",
-            career_goal: "",
-          };
-    } catch {
-      return {
-        full_name: "",
-        email: "",
-        college: "",
-        department: "",
-        study_year: "",
-        location: "",
-        skills: "",
-        interests: "",
-        career_goal: "",
-      };
-    }
-  });
+    serverRecommendations,
+    setServerRecommendations,
+  ] = useState([]);
 
   const [
-    profileId,
-    setProfileId,
-  ] = useState(() => {
-    const saved =
-      localStorage.getItem(
-        "aenova_profile_id"
-      );
-
-    return saved ? Number(saved) : null;
-  });
-
-  const [
-    profileStep,
-    setProfileStep,
-  ] = useState(1);
-
-  const [
-    profileMessage,
-    setProfileMessage,
-  ] = useState("");
-
-  const [
-    savingProfile,
-    setSavingProfile,
+    loadingRecommendations,
+    setLoadingRecommendations,
   ] = useState(false);
+
+  const [
+    recommendationMessage,
+    setRecommendationMessage,
+  ] = useState("");
 
   /* =======================================================
      FEEDBACK
-     ======================================================= */
+  ======================================================= */
 
-  const [
-    feedback,
-    setFeedback,
-  ] = useState(() => {
-    try {
-      const saved =
-        localStorage.getItem(
-          "aenova_feedback"
-        );
+  const [feedback, setFeedback] =
+    useState(() => {
+      try {
+        const saved =
+          localStorage.getItem(
+            "aenova_feedback"
+          );
 
-      return saved
-        ? JSON.parse(saved)
-        : {};
-    } catch {
-      return {};
-    }
-  });
+        return saved
+          ? JSON.parse(saved)
+          : {};
+      } catch {
+        return {};
+      }
+    });
 
   /* =======================================================
      CHAT
-     ======================================================= */
+  ======================================================= */
 
-  const [
-    messages,
-    setMessages,
-  ] = useState([
-    {
-      id: "welcome",
-      sender: "bot",
-      text:
-        "Hey! 👋 I'm ANEBESTRA, your AI assistant inside AENOVA. What are you working on today?",
-    },
-  ]);
+  const [messages, setMessages] =
+    useState([
+      {
+        id: "welcome",
+        sender: "bot",
+        text:
+          "Hey! 👋 I'm ANEBESTRA, your AI assistant inside AENOVA. What are you working on today?",
+      },
+    ]);
 
-  const [
-    chatMessage,
-    setChatMessage,
-  ] = useState("");
+  const [chatMessage, setChatMessage] =
+    useState("");
 
-  const [
-    sendingMessage,
-    setSendingMessage,
-  ] = useState(false);
+  const [sendingMessage, setSendingMessage] =
+    useState(false);
 
-  const [
-    sessionId,
-    setSessionId,
-  ] = useState(() => {
-    const saved =
-      localStorage.getItem(
-        "aenova_anebestra_session"
+  const [sessionId, setSessionId] =
+    useState(() => {
+      const saved =
+        localStorage.getItem(
+          "aenova_anebestra_session"
+        );
+
+      if (saved) {
+        return saved;
+      }
+
+      const newSession =
+        typeof crypto !==
+          "undefined" &&
+        typeof crypto.randomUUID ===
+          "function"
+          ? crypto.randomUUID()
+          : `aenova-${Date.now()}-${Math.random()
+              .toString(36)
+              .slice(2)}`;
+
+      localStorage.setItem(
+        "aenova_anebestra_session",
+        newSession
       );
 
-    if (saved) return saved;
-
-    const newSession =
-      typeof crypto !== "undefined" &&
-      typeof crypto.randomUUID ===
-        "function"
-        ? crypto.randomUUID()
-        : `aenova-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2)}`;
-
-    localStorage.setItem(
-      "aenova_anebestra_session",
-      newSession
-    );
-
-    return newSession;
-  });
+      return newSession;
+    });
 
   /* =======================================================
-     PERSIST PROFILE LOCALLY
-     ======================================================= */
+     PROFILE COMPLETION
+  ======================================================= */
+
+  const isProfileComplete =
+    Boolean(
+      profile.full_name.trim() &&
+        profile.email.trim() &&
+        profile.college.trim() &&
+        profile.department.trim() &&
+        profile.skills.trim() &&
+        profile.interests.trim() &&
+        profile.career_goal.trim()
+    );
+
+  /* =======================================================
+     SAVE PROFILE LOCALLY
+  ======================================================= */
 
   useEffect(() => {
     localStorage.setItem(
@@ -925,9 +770,12 @@ function App() {
     );
   }, [profile]);
 
-  /* =======================================================
-     PERSIST FEEDBACK LOCALLY
-     ======================================================= */
+  useEffect(() => {
+    localStorage.setItem(
+      "aenova_profile_step",
+      String(profileStep)
+    );
+  }, [profileStep]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -937,73 +785,40 @@ function App() {
   }, [feedback]);
 
   /* =======================================================
-     LOAD CHAT HISTORY
-     ======================================================= */
+     BACKEND TEST
+  ======================================================= */
 
   useEffect(() => {
-    fetch(
-      `${API}/api/chat/history/${encodeURIComponent(
-        sessionId
-      )}`
-    )
+    fetch(`${API}/api/test`)
       .then((response) =>
         response.json()
       )
       .then((data) => {
-        if (
-          data &&
-          data.success &&
-          Array.isArray(data.messages) &&
-          data.messages.length > 0
-        ) {
-          setMessages(
-            data.messages.map(
-              (item, index) => ({
-                id:
-                  `history-${
-                    item.id || index
-                  }`,
-                sender:
-                  item.role ===
-                  "assistant"
-                    ? "bot"
-                    : "user",
-                text:
-                  item.message || "",
-              })
-            )
-          );
-        }
-
-        if (data?.profile_id) {
-          setProfileId(
-            Number(data.profile_id)
-          );
-
-          localStorage.setItem(
-            "aenova_profile_id",
-            String(data.profile_id)
-          );
-        }
+        setBackendMessage(
+          data.message ||
+            "AENOVA backend connected."
+        );
       })
       .catch((error) => {
         console.error(
-          "Chat history error:",
+          "Backend test error:",
           error
         );
+
+        setBackendMessage(
+          "Backend connection unavailable."
+        );
       });
-  }, [sessionId]);
+  }, []);
 
   /* =======================================================
      LOAD OPPORTUNITIES
-     ======================================================= */
+  ======================================================= */
 
   useEffect(() => {
     setLoadingOpportunities(true);
 
-    fetch(
-      `${API}/api/opportunities`
-    )
+    fetch(`${API}/api/opportunities`)
       .then((response) =>
         response.json()
       )
@@ -1027,44 +842,230 @@ function App() {
       })
       .catch((error) => {
         console.error(
-          "Opportunity error:",
+          "Opportunity loading error:",
           error
         );
 
         setOpportunities([]);
       })
       .finally(() => {
-        setLoadingOpportunities(
-          false
-        );
+        setLoadingOpportunities(false);
       });
   }, []);
 
   /* =======================================================
-     RECOMMENDATIONS
-     ======================================================= */
+     LOAD SERVER RECOMMENDATIONS
+  ======================================================= */
 
-  const recommendations = useMemo(() => {
-    return opportunities
-      .map((opportunity) => ({
-        opportunity,
-        analysis:
-          calculateRecommendation(
-            opportunity,
-            profile,
-            feedback
-          ),
-      }))
-      .sort(
-        (a, b) =>
-          b.analysis.score -
-          a.analysis.score
-      );
-  }, [
-    opportunities,
-    profile,
-    feedback,
-  ]);
+  const loadRecommendations =
+    async (id) => {
+      if (!id) {
+        setServerRecommendations([]);
+        return;
+      }
+
+      setLoadingRecommendations(true);
+      setRecommendationMessage("");
+
+      try {
+        const response =
+          await fetch(
+            `${API}/api/recommendations/${id}`
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              data.detail ||
+              "Unable to load recommendations."
+          );
+        }
+
+        let rows = [];
+
+        if (
+          Array.isArray(
+            data.recommendations
+          )
+        ) {
+          rows =
+            data.recommendations;
+        } else if (
+          Array.isArray(data.data)
+        ) {
+          rows = data.data;
+        } else if (
+          Array.isArray(data)
+        ) {
+          rows = data;
+        }
+
+        setServerRecommendations(
+          rows
+        );
+
+        if (rows.length === 0) {
+          setRecommendationMessage(
+            "Your profile is saved. There are no strong matches in the current opportunity listings yet."
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Recommendation loading error:",
+          error
+        );
+
+        setServerRecommendations([]);
+
+        setRecommendationMessage(
+          "Your profile was saved, but personalized recommendations could not be loaded right now. AENOVA will still analyze the current listings below."
+        );
+      } finally {
+        setLoadingRecommendations(false);
+      }
+    };
+
+  /* =======================================================
+     LOAD EXISTING RECOMMENDATIONS
+  ======================================================= */
+
+  useEffect(() => {
+    if (profileId) {
+      loadRecommendations(profileId);
+    }
+  }, [profileId]);
+
+  /* =======================================================
+     LOCAL RECOMMENDATION FALLBACK
+  ======================================================= */
+
+  const localRecommendations =
+    useMemo(() => {
+      return opportunities
+        .map((opportunity) => ({
+          opportunity,
+          analysis:
+            calculateRecommendation(
+              opportunity,
+              profile,
+              feedback
+            ),
+        }))
+        .sort(
+          (a, b) =>
+            b.analysis.score -
+            a.analysis.score
+        );
+    }, [
+      opportunities,
+      profile,
+      feedback,
+    ]);
+
+  /* =======================================================
+     CONVERT SERVER RECOMMENDATIONS
+  ======================================================= */
+
+  const normalizedServerRecommendations =
+    useMemo(() => {
+      return serverRecommendations
+        .map((row) => {
+          const opportunity =
+            row.opportunity ||
+            row.opportunities ||
+            row;
+
+          const opportunityId =
+            row.opportunity_id ||
+            opportunity?.id;
+
+          const matchingOpportunity =
+            opportunities.find(
+              (item) =>
+                String(item.id) ===
+                String(
+                  opportunityId
+                )
+            );
+
+          const finalOpportunity =
+            matchingOpportunity ||
+            opportunity;
+
+          const rawScore =
+            row.match_score ??
+            row.score ??
+            finalOpportunity?.match_score ??
+            0;
+
+          const score =
+            Number(rawScore) || 0;
+
+          const reason =
+            row.match_reasons ||
+            row.recommendation_reason ||
+            row.reason ||
+            "";
+
+          return {
+            opportunity:
+              finalOpportunity,
+            analysis: {
+              score,
+              level:
+                score >= 75
+                  ? "Strong match"
+                  : score >= 55
+                  ? "Good match"
+                  : score >= 35
+                  ? "Potential match"
+                  : "Possible match",
+              reasons: reason
+                ? String(reason)
+                    .split(
+                      /\n|;/
+                    )
+                    .map((item) =>
+                      item.trim()
+                    )
+                    .filter(Boolean)
+                    .slice(0, 4)
+                : [
+                    "matched using your profile",
+                  ],
+            },
+          };
+        })
+        .filter(
+          (item) =>
+            item.opportunity &&
+            (
+              item.opportunity.title ||
+              item.opportunity.id
+            )
+        )
+        .sort(
+          (a, b) =>
+            b.analysis.score -
+            a.analysis.score
+        );
+    }, [
+      serverRecommendations,
+      opportunities,
+    ]);
+
+  /* =======================================================
+     FINAL RECOMMENDATIONS
+  ======================================================= */
+
+  const recommendations =
+    normalizedServerRecommendations.length >
+    0
+      ? normalizedServerRecommendations
+      : localRecommendations;
 
   const topRecommendations =
     recommendations
@@ -1074,14 +1075,9 @@ function App() {
       )
       .slice(0, 6);
 
-  const [
-    recommendationMode,
-    setRecommendationMode,
-  ] = useState("recommended");
-
   /* =======================================================
-     FILTERED OPPORTUNITIES
-     ======================================================= */
+     CATEGORY FILTER
+  ======================================================= */
 
   const filteredOpportunities =
     selectedCategory === "All"
@@ -1096,8 +1092,8 @@ function App() {
         );
 
   /* =======================================================
-     PROFILE UPDATE
-     ======================================================= */
+     UPDATE PROFILE
+  ======================================================= */
 
   const updateProfile = (
     field,
@@ -1107,21 +1103,41 @@ function App() {
       ...previous,
       [field]: value,
     }));
+
+    setProfileMessage("");
   };
 
   /* =======================================================
-     SAVE PROFILE
-     ======================================================= */
+     SCROLL TO SECTION
+  ======================================================= */
 
-  const saveProfile =
-    async () => {
-      setProfileMessage("");
+  const scrollToSection = (
+    id
+  ) => {
+    setTimeout(() => {
+      document
+        .getElementById(id)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    }, 100);
+  };
 
-      if (!profile.full_name.trim()) {
+  /* =======================================================
+     PROFILE VALIDATION
+  ======================================================= */
+
+  const goToNextStep = () => {
+    setProfileMessage("");
+
+    if (profileStep === 1) {
+      if (
+        !profile.full_name.trim()
+      ) {
         setProfileMessage(
           "Please enter your full name."
         );
-        setProfileStep(1);
         return;
       }
 
@@ -1129,31 +1145,58 @@ function App() {
         setProfileMessage(
           "Please enter your email address."
         );
-        setProfileStep(1);
         return;
       }
 
+      setProfileStep(2);
+      return;
+    }
+
+    if (profileStep === 2) {
       if (!profile.college.trim()) {
         setProfileMessage(
           "Please enter your college name."
         );
-        setProfileStep(2);
         return;
       }
 
-      if (!profile.department.trim()) {
+      if (
+        !profile.department.trim()
+      ) {
         setProfileMessage(
           "Please enter your department."
         );
-        setProfileStep(2);
         return;
       }
 
+      if (!profile.study_year.trim()) {
+        setProfileMessage(
+          "Please enter your study year."
+        );
+        return;
+      }
+
+      setProfileStep(3);
+      return;
+    }
+
+    if (profileStep === 3) {
+      if (!profile.location.trim()) {
+        setProfileMessage(
+          "Please enter your city or location."
+        );
+        return;
+      }
+
+      setProfileStep(4);
+      return;
+    }
+
+    if (profileStep === 4) {
       if (!profile.skills.trim()) {
         setProfileMessage(
           "Please add at least one skill."
         );
-        setProfileStep(4);
         return;
       }
 
@@ -1161,19 +1204,102 @@ function App() {
         setProfileMessage(
           "Please add your interests."
         );
-        setProfileStep(4);
         return;
       }
 
-      if (!profile.career_goal.trim()) {
+      setProfileStep(5);
+      return;
+    }
+  };
+
+  /* =======================================================
+     SAVE PROFILE TO RENDER + SUPABASE
+  ======================================================= */
+
+  const saveProfile =
+    async () => {
+      setProfileMessage("");
+
+      if (
+        !profile.full_name.trim()
+      ) {
+        setProfileStep(1);
+        setProfileMessage(
+          "Please enter your full name."
+        );
+        return;
+      }
+
+      if (!profile.email.trim()) {
+        setProfileStep(1);
+        setProfileMessage(
+          "Please enter your email address."
+        );
+        return;
+      }
+
+      if (!profile.college.trim()) {
+        setProfileStep(2);
+        setProfileMessage(
+          "Please enter your college name."
+        );
+        return;
+      }
+
+      if (
+        !profile.department.trim()
+      ) {
+        setProfileStep(2);
+        setProfileMessage(
+          "Please enter your department."
+        );
+        return;
+      }
+
+      if (!profile.study_year.trim()) {
+        setProfileStep(2);
+        setProfileMessage(
+          "Please enter your study year."
+        );
+        return;
+      }
+
+      if (!profile.location.trim()) {
+        setProfileStep(3);
+        setProfileMessage(
+          "Please enter your location."
+        );
+        return;
+      }
+
+      if (!profile.skills.trim()) {
+        setProfileStep(4);
+        setProfileMessage(
+          "Please add at least one skill."
+        );
+        return;
+      }
+
+      if (!profile.interests.trim()) {
+        setProfileStep(4);
+        setProfileMessage(
+          "Please add your interests."
+        );
+        return;
+      }
+
+      if (
+        !profile.career_goal.trim()
+      ) {
+        setProfileStep(5);
         setProfileMessage(
           "Please enter your career goal."
         );
-        setProfileStep(5);
         return;
       }
 
       setSavingProfile(true);
+      setRecommendationMessage("");
 
       try {
         const response =
@@ -1196,32 +1322,102 @@ function App() {
           await response.json();
 
         if (
-          response.ok &&
-          data.success !== false
+          !response.ok ||
+          data.success === false
         ) {
-          if (data.profile_id) {
-            setProfileId(
-              Number(data.profile_id)
-            );
-
-            localStorage.setItem(
-              "aenova_profile_id",
-              String(data.profile_id)
-            );
-          }
-
-          setProfileMessage(
-            "✓ Your profile has been saved successfully!"
-          );
-
-          setProfileStep(5);
-        } else {
-          setProfileMessage(
+          throw new Error(
             data.message ||
               data.detail ||
-              "Unable to save your profile."
+              "Profile could not be saved."
           );
         }
+
+        /*
+         * The backend returns profile_id.
+         * We also support the older response
+         * format where the ID may be inside data.
+         */
+
+        let returnedProfileId =
+          data.profile_id ||
+          data.id ||
+          null;
+
+        if (
+          !returnedProfileId &&
+          Array.isArray(data.data) &&
+          data.data.length > 0
+        ) {
+          returnedProfileId =
+            data.data[0].id;
+        }
+
+        if (
+          !returnedProfileId &&
+          data.data &&
+          data.data.id
+        ) {
+          returnedProfileId =
+            data.data.id;
+        }
+
+        if (!returnedProfileId) {
+          throw new Error(
+            "The backend saved the request but did not return a profile ID. Please check the backend profile endpoint."
+          );
+        }
+
+        const numericProfileId =
+          Number(returnedProfileId);
+
+        setProfileId(
+          numericProfileId
+        );
+
+        localStorage.setItem(
+          "aenova_profile_id",
+          String(numericProfileId)
+        );
+
+        localStorage.setItem(
+          "aenova_profile_saved",
+          "true"
+        );
+
+        localStorage.setItem(
+          "aenova_profile",
+          JSON.stringify(profile)
+        );
+
+        setProfileSaved(true);
+
+        setProfileMessage(
+          "✓ Profile saved to AENOVA successfully!"
+        );
+
+        /*
+         * Load recommendations immediately
+         */
+
+        await loadRecommendations(
+          numericProfileId
+        );
+
+        /*
+         * Show success guidance
+         */
+
+        setProfileMessage(
+          "✓ Profile saved successfully! Your personalized recommendations are ready below."
+        );
+
+        /*
+         * Move user directly to recommendations
+         */
+
+        scrollToSection(
+          "recommendations"
+        );
       } catch (error) {
         console.error(
           "Profile save error:",
@@ -1229,7 +1425,8 @@ function App() {
         );
 
         setProfileMessage(
-          "Backend connection failed."
+          error.message ||
+            "Unable to save your profile."
         );
       } finally {
         setSavingProfile(false);
@@ -1238,7 +1435,7 @@ function App() {
 
   /* =======================================================
      FEEDBACK
-     ======================================================= */
+  ======================================================= */
 
   const giveFeedback = (
     opportunity,
@@ -1255,7 +1452,9 @@ function App() {
         ...previous,
       };
 
-      if (updated[key] === type) {
+      if (
+        updated[key] === type
+      ) {
         delete updated[key];
       } else {
         updated[key] = type;
@@ -1264,37 +1463,130 @@ function App() {
       return updated;
     });
 
-    fetch(
-      `${API}/api/feedback`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          session_id:
-            sessionId,
-          profile_id:
-            profileId,
-          opportunity_id:
-            opportunity.id ||
-            null,
-          feedback_type:
-            type,
-        }),
-      }
-    ).catch((error) => {
+    fetch(`${API}/api/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        session_id:
+          sessionId,
+        profile_id:
+          profileId,
+        opportunity_id:
+          opportunity.id ||
+          null,
+        feedback_type: type,
+      }),
+    }).catch((error) => {
       console.error(
-        "Feedback save error:",
+        "Feedback error:",
         error
       );
     });
   };
 
   /* =======================================================
+     NEW CHAT
+  ======================================================= */
+
+  const startNewChat = () => {
+    const newSession =
+      typeof crypto !==
+        "undefined" &&
+      typeof crypto.randomUUID ===
+        "function"
+        ? crypto.randomUUID()
+        : `aenova-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
+    localStorage.setItem(
+      "aenova_anebestra_session",
+      newSession
+    );
+
+    setSessionId(newSession);
+
+    setMessages([
+      {
+        id:
+          `welcome-${Date.now()}`,
+        sender: "bot",
+        text:
+          "Fresh conversation started. 👋 What would you like to work on?",
+      },
+    ]);
+  };
+
+  /* =======================================================
+     CHAT HISTORY
+  ======================================================= */
+
+  useEffect(() => {
+    fetch(
+      `${API}/api/chat/history/${encodeURIComponent(
+        sessionId
+      )}`
+    )
+      .then((response) =>
+        response.json()
+      )
+      .then((data) => {
+        if (
+          data &&
+          Array.isArray(
+            data.messages
+          ) &&
+          data.messages.length > 0
+        ) {
+          setMessages(
+            data.messages.map(
+              (item, index) => ({
+                id:
+                  `history-${
+                    item.id ||
+                    index
+                  }`,
+                sender:
+                  item.role ===
+                  "assistant"
+                    ? "bot"
+                    : "user",
+                text:
+                  item.message ||
+                  "",
+              })
+            )
+          );
+        }
+
+        if (data?.profile_id) {
+          const id =
+            Number(
+              data.profile_id
+            );
+
+          setProfileId(id);
+
+          localStorage.setItem(
+            "aenova_profile_id",
+            String(id)
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          "Chat history error:",
+          error
+        );
+      });
+  }, [sessionId]);
+
+  /* =======================================================
      SEND CHAT MESSAGE
-     ======================================================= */
+  ======================================================= */
 
   const sendMessage =
     async () => {
@@ -1308,7 +1600,8 @@ function App() {
         return;
       }
 
-      const now = Date.now();
+      const now =
+        Date.now();
 
       const thinkingId =
         `thinking-${now}`;
@@ -1344,33 +1637,15 @@ function App() {
                 "Content-Type":
                   "application/json",
               },
-              body: JSON.stringify({
-                message,
-                session_id:
-                  sessionId,
-                profile_id:
-                  profileId,
-                profile: {
-                  full_name:
-                    profile.full_name,
-                  email:
-                    profile.email,
-                  college:
-                    profile.college,
-                  department:
-                    profile.department,
-                  study_year:
-                    profile.study_year,
-                  location:
-                    profile.location,
-                  skills:
-                    profile.skills,
-                  interests:
-                    profile.interests,
-                  career_goal:
-                    profile.career_goal,
-                },
-              }),
+              body:
+                JSON.stringify({
+                  message,
+                  session_id:
+                    sessionId,
+                  profile_id:
+                    profileId,
+                  profile,
+                }),
             }
           );
 
@@ -1381,37 +1656,25 @@ function App() {
           !response.ok ||
           !data.success
         ) {
-          setMessages(
-            (previous) =>
-              previous.map(
-                (item) =>
-                  item.id ===
-                  thinkingId
-                    ? {
-                        ...item,
-                        text:
-                          data.reply ||
-                          data.message ||
-                          data.detail ||
-                          "Sorry, I couldn't answer that right now.",
-                        isThinking:
-                          false,
-                      }
-                    : item
-              )
+          throw new Error(
+            data.reply ||
+              data.message ||
+              data.detail ||
+              "ANEBESTRA could not respond."
           );
-
-          return;
         }
 
         if (data.profile_id) {
-          setProfileId(
-            Number(data.profile_id)
-          );
+          const id =
+            Number(
+              data.profile_id
+            );
+
+          setProfileId(id);
 
           localStorage.setItem(
             "aenova_profile_id",
-            String(data.profile_id)
+            String(id)
           );
         }
 
@@ -1507,7 +1770,8 @@ function App() {
                   ? {
                       ...item,
                       text:
-                        "I couldn't connect to the AENOVA AI service. Please try again.",
+                        error.message ||
+                        "I couldn't connect to the AENOVA AI service.",
                       isThinking:
                         false,
                       isStreaming:
@@ -1519,40 +1783,6 @@ function App() {
       } finally {
         setSendingMessage(false);
       }
-    };
-
-  /* =======================================================
-     NEW CHAT
-     ======================================================= */
-
-  const startNewChat =
-    () => {
-      const newSession =
-        typeof crypto !==
-          "undefined" &&
-        typeof crypto.randomUUID ===
-          "function"
-          ? crypto.randomUUID()
-          : `aenova-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2)}`;
-
-      localStorage.setItem(
-        "aenova_anebestra_session",
-        newSession
-      );
-
-      setSessionId(newSession);
-
-      setMessages([
-        {
-          id:
-            `welcome-${Date.now()}`,
-          sender: "bot",
-          text:
-            "Fresh conversation started. 👋 What would you like to work on?",
-        },
-      ]);
     };
 
   const handleChatKeyDown =
@@ -1568,13 +1798,10 @@ function App() {
 
   /* =======================================================
      RECOMMENDATION CARD
-     ======================================================= */
+  ======================================================= */
 
   const RecommendationCard =
-    ({
-      item,
-      featured = false,
-    }) => {
+    ({ item }) => {
       const opportunity =
         item.opportunity;
 
@@ -1592,36 +1819,26 @@ function App() {
 
       return (
         <div
-          className="recommendation-card"
           style={{
-            position:
-              "relative",
-            background:
-              "#ffffff",
+            position: "relative",
+            background: "#ffffff",
             border:
-              featured
-                ? "2px solid #6658e8"
-                : "1px solid #e7e7f3",
-            borderRadius:
-              "18px",
+              "1px solid #e6e5f2",
+            borderRadius: "18px",
             padding: "20px",
             boxShadow:
-              featured
-                ? "0 12px 35px rgba(92,82,220,0.14)"
-                : "0 8px 25px rgba(40,40,100,0.06)",
+              "0 10px 30px rgba(40,40,100,0.07)",
+            height: "100%",
             boxSizing:
               "border-box",
-            height: "100%",
           }}
         >
           <div
             style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
+              display: "flex",
               justifyContent:
                 "space-between",
+              alignItems: "center",
               marginBottom:
                 "12px",
             }}
@@ -1636,10 +1853,7 @@ function App() {
                   analysis.score >=
                   75
                     ? "#e9f8f1"
-                    : analysis.score >=
-                      55
-                    ? "#eef1ff"
-                    : "#f5f5fb",
+                    : "#f0efff",
                 color:
                   analysis.score >=
                   75
@@ -1654,18 +1868,16 @@ function App() {
               {analysis.level}
             </span>
 
-            <span
+            <strong
               style={{
-                fontSize:
-                  "20px",
-                fontWeight:
-                  "900",
                 color:
                   "#5e55df",
+                fontSize:
+                  "20px",
               }}
             >
               {analysis.score}%
-            </span>
+            </strong>
           </div>
 
           <div
@@ -1674,7 +1886,7 @@ function App() {
                 "11px",
               color: "#777",
               fontWeight:
-                "700",
+                "800",
               textTransform:
                 "uppercase",
               marginBottom:
@@ -1759,9 +1971,7 @@ function App() {
                 .map(
                   (reason, index) => (
                     <div
-                      key={
-                        index
-                      }
+                      key={index}
                     >
                       • {reason}
                     </div>
@@ -1772,30 +1982,29 @@ function App() {
 
           <div
             style={{
-              display:
-                "flex",
+              display: "flex",
               flexDirection:
                 "column",
               gap: "5px",
               marginBottom:
-                "15px",
+                "14px",
               fontSize:
                 "11px",
               color:
-                "#77788d",
+                "#77788c",
             }}
           >
-            {opportunity.location && (
-              <span>
-                📍{" "}
-                {opportunity.location}
-              </span>
-            )}
-
             {opportunity.organization && (
               <span>
                 🏢{" "}
                 {opportunity.organization}
+              </span>
+            )}
+
+            {opportunity.location && (
+              <span>
+                📍{" "}
+                {opportunity.location}
               </span>
             )}
 
@@ -1816,14 +2025,13 @@ function App() {
 
           <div
             style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
+              display: "flex",
               justifyContent:
                 "space-between",
+              alignItems:
+                "center",
               marginBottom:
-                "10px",
+                "11px",
             }}
           >
             <span
@@ -1834,13 +2042,12 @@ function App() {
                   "#88899c",
               }}
             >
-              Is this recommendation useful?
+              Useful recommendation?
             </span>
 
             <div
               style={{
-                display:
-                  "flex",
+                display: "flex",
                 gap: "6px",
               }}
             >
@@ -1915,12 +2122,13 @@ function App() {
               rel="noopener noreferrer"
               className="view-button"
               style={{
-                display:
-                  "block",
-                textAlign:
-                  "center",
+                display: "block",
+                textAlign: "center",
                 textDecoration:
                   "none",
+                width: "100%",
+                boxSizing:
+                  "border-box",
               }}
             >
               View Official Listing →
@@ -1943,15 +2151,19 @@ function App() {
 
   /* =======================================================
      RENDER
-     ======================================================= */
+  ======================================================= */
 
   return (
     <div className="app">
 
-      {/* NAVBAR */}
+      {/* =================================================
+          NAVBAR
+      ================================================= */}
+
       <nav className="navbar">
+
         <a
-          href="#home"
+          href="#profile"
           className="logo-link"
         >
           <img
@@ -1962,39 +2174,1100 @@ function App() {
         </a>
 
         <div className="nav-links">
-          <a href="#home">
-            Home
+
+          <a href="#profile">
+            Profile
           </a>
-          <a href="#features">
-            Features
-          </a>
-          <a href="#how-it-works">
-            How it works
-          </a>
+
           <a href="#recommendations">
             AI Matches
           </a>
+
           <a href="#opportunities">
             Opportunities
           </a>
+
+          <a href="#how-it-works">
+            How it works
+          </a>
+
           <a href="#assistant">
             AI Assistant
           </a>
+
           <a
             href="#profile"
             className="nav-button"
           >
-            Get Started →
+            {profileSaved
+              ? "Edit Profile"
+              : "Get Started →"}
           </a>
+
         </div>
       </nav>
 
-      {/* HERO */}
+      {/* =================================================
+          PROFILE FIRST
+      ================================================= */}
+
+      <section
+        className="profile-section"
+        id="profile"
+        style={{
+          paddingTop: "70px",
+          minHeight:
+            "calc(100vh - 90px)",
+          display: "flex",
+          alignItems:
+            "center",
+        }}
+      >
+
+        <div
+          style={{
+            width: "100%",
+          }}
+        >
+
+          <div className="section-heading">
+
+            <div className="section-badge">
+              ✦ Step 1 — Build your profile
+            </div>
+
+            <h2>
+              Let's personalize
+              <span>
+                {" "}AENOVA for you.
+              </span>
+            </h2>
+
+            <p>
+              Complete your profile first.
+              AENOVA will use it to create
+              relevant recommendations for
+              your department, skills,
+              interests and career goal.
+            </p>
+
+          </div>
+
+          <div
+            className="profile-form"
+            style={{
+              maxWidth: "650px",
+              margin: "0 auto",
+              position: "relative",
+            }}
+          >
+
+            {/* PROFILE PROGRESS */}
+
+            <div
+              style={{
+                marginBottom:
+                  "25px",
+              }}
+            >
+
+              <div
+                style={{
+                  display:
+                    "flex",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "center",
+                  marginBottom:
+                    "9px",
+                  fontSize:
+                    "11px",
+                  fontWeight:
+                    "800",
+                  color:
+                    "#6257e8",
+                }}
+              >
+                <span>
+                  Step {profileStep} of 5
+                </span>
+
+                <span>
+                  {profileStep === 1
+                    ? "Basic Information"
+                    : profileStep === 2
+                    ? "Education"
+                    : profileStep === 3
+                    ? "Location"
+                    : profileStep === 4
+                    ? "Skills & Interests"
+                    : "Career Goal"}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  height: "7px",
+                  background:
+                    "#eeeeF8",
+                  borderRadius:
+                    "99px",
+                  overflow:
+                    "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width:
+                      `${profileStep * 20}%`,
+                    height:
+                      "100%",
+                    background:
+                      "linear-gradient(90deg,#4d6df6,#7655f5)",
+                    borderRadius:
+                      "99px",
+                    transition:
+                      "width .3s ease",
+                  }}
+                />
+              </div>
+
+            </div>
+
+            {/* STEP INDICATORS */}
+
+            <div
+              style={{
+                display:
+                  "flex",
+                justifyContent:
+                  "center",
+                alignItems:
+                  "center",
+                gap: "7px",
+                marginBottom:
+                  "25px",
+              }}
+            >
+
+              {[1, 2, 3, 4, 5].map(
+                (step) => (
+                  <div
+                    key={step}
+                    style={{
+                      width:
+                        "34px",
+                      height:
+                        "34px",
+                      borderRadius:
+                        "50%",
+                      display:
+                        "grid",
+                      placeItems:
+                        "center",
+                      background:
+                        profileStep >=
+                        step
+                          ? "#6257e8"
+                          : "#eeeeF8",
+                      color:
+                        profileStep >=
+                        step
+                          ? "#fff"
+                          : "#77788c",
+                      fontSize:
+                        "11px",
+                      fontWeight:
+                        "800",
+                    }}
+                  >
+                    {step}
+                  </div>
+                )
+              )}
+
+            </div>
+
+            {/* =========================================
+                STEP 1
+            ========================================= */}
+
+            {profileStep === 1 && (
+              <div>
+
+                <div
+                  style={{
+                    textAlign:
+                      "center",
+                    marginBottom:
+                      "20px",
+                  }}
+                >
+                  <h3>
+                    👋 Welcome to AENOVA
+                  </h3>
+
+                  <p
+                    style={{
+                      color:
+                        "#77788c",
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    First, tell us who you are.
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Full name"
+                  value={
+                    profile.full_name
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "full_name",
+                      event.target.value
+                    )
+                  }
+                  autoComplete="name"
+                />
+
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={
+                    profile.email
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "email",
+                      event.target.value
+                    )
+                  }
+                  autoComplete="email"
+                />
+
+                <button
+                  type="button"
+                  onClick={
+                    goToNextStep
+                  }
+                >
+                  Continue to Education →
+                </button>
+
+              </div>
+            )}
+
+            {/* =========================================
+                STEP 2
+            ========================================= */}
+
+            {profileStep === 2 && (
+              <div>
+
+                <div
+                  style={{
+                    textAlign:
+                      "center",
+                    marginBottom:
+                      "20px",
+                  }}
+                >
+                  <h3>
+                    🎓 Your education
+                  </h3>
+
+                  <p
+                    style={{
+                      color:
+                        "#77788c",
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    This helps us understand
+                    your academic background.
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="College / University"
+                  value={
+                    profile.college
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "college",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="text"
+                  placeholder="Department — CSE, ECE, Mechanical, Commerce, Law, Design, etc."
+                  value={
+                    profile.department
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "department",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="text"
+                  placeholder="Study year — 1st Year, 2nd Year, Final Year, etc."
+                  value={
+                    profile.study_year
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "study_year",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap:
+                      "10px",
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileStep(1)
+                    }
+                    style={{
+                      background:
+                        "#eeeeF8",
+                      color:
+                        "#55566e",
+                    }}
+                  >
+                    ← Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      goToNextStep
+                    }
+                  >
+                    Continue →
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* =========================================
+                STEP 3
+            ========================================= */}
+
+            {profileStep === 3 && (
+              <div>
+
+                <div
+                  style={{
+                    textAlign:
+                      "center",
+                    marginBottom:
+                      "20px",
+                  }}
+                >
+                  <h3>
+                    📍 Where are you based?
+                  </h3>
+
+                  <p
+                    style={{
+                      color:
+                        "#77788c",
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    We can still show opportunities
+                    across India and eligible
+                    remote opportunities.
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="City / Location — e.g. Coimbatore, Chennai"
+                  value={
+                    profile.location
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "location",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <div
+                  style={{
+                    background:
+                      "#f4f3ff",
+                    border:
+                      "1px solid #e1defe",
+                    borderRadius:
+                      "12px",
+                    padding:
+                      "13px",
+                    marginBottom:
+                      "15px",
+                    fontSize:
+                      "12px",
+                    color:
+                      "#565772",
+                  }}
+                >
+                  🌎 AENOVA considers your
+                  location as one signal,
+                  while keeping the opportunity
+                  search broad.
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap:
+                      "10px",
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileStep(2)
+                    }
+                    style={{
+                      background:
+                        "#eeeeF8",
+                      color:
+                        "#55566e",
+                    }}
+                  >
+                    ← Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      goToNextStep
+                    }
+                  >
+                    Continue →
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* =========================================
+                STEP 4
+            ========================================= */}
+
+            {profileStep === 4 && (
+              <div>
+
+                <div
+                  style={{
+                    textAlign:
+                      "center",
+                    marginBottom:
+                      "20px",
+                  }}
+                >
+                  <h3>
+                    🧠 Your skills & interests
+                  </h3>
+
+                  <p
+                    style={{
+                      color:
+                        "#77788c",
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    These signals strongly
+                    influence your matches.
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Skills — Python, Excel, AutoCAD, Java, Marketing, etc."
+                  value={
+                    profile.skills
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "skills",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <input
+                  type="text"
+                  placeholder="Interests — AI, Finance, Robotics, Design, Law, Agriculture, etc."
+                  value={
+                    profile.interests
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "interests",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap:
+                      "10px",
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileStep(3)
+                    }
+                    style={{
+                      background:
+                        "#eeeeF8",
+                      color:
+                        "#55566e",
+                    }}
+                  >
+                    ← Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      goToNextStep
+                    }
+                  >
+                    Continue →
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* =========================================
+                STEP 5
+            ========================================= */}
+
+            {profileStep === 5 && (
+              <div>
+
+                <div
+                  style={{
+                    textAlign:
+                      "center",
+                    marginBottom:
+                      "20px",
+                  }}
+                >
+                  <h3>
+                    🎯 Your career direction
+                  </h3>
+
+                  <p
+                    style={{
+                      color:
+                        "#77788c",
+                      fontSize:
+                        "13px",
+                    }}
+                  >
+                    What kind of future are
+                    you working towards?
+                  </p>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Career goal — AI Engineer, Finance Analyst, Lawyer, Designer, Civil Engineer, etc."
+                  value={
+                    profile.career_goal
+                  }
+                  onChange={(event) =>
+                    updateProfile(
+                      "career_goal",
+                      event.target.value
+                    )
+                  }
+                />
+
+                <div
+                  style={{
+                    background:
+                      "linear-gradient(135deg,#f3f1ff,#f2fbff)",
+                    border:
+                      "1px solid #e2defe",
+                    borderRadius:
+                      "13px",
+                    padding:
+                      "14px",
+                    marginBottom:
+                      "15px",
+                    fontSize:
+                      "12px",
+                    color:
+                      "#55566e",
+                    lineHeight:
+                      "1.6",
+                  }}
+                >
+                  🎯 AENOVA will use your
+                  complete profile to generate
+                  personalized recommendations
+                  from the current real opportunity
+                  listings.
+                </div>
+
+                <div
+                  style={{
+                    display:
+                      "flex",
+                    gap:
+                      "10px",
+                  }}
+                >
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProfileStep(4)
+                    }
+                    disabled={
+                      savingProfile
+                    }
+                    style={{
+                      background:
+                        "#eeeeF8",
+                      color:
+                        "#55566e",
+                    }}
+                  >
+                    ← Back
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      saveProfile
+                    }
+                    disabled={
+                      savingProfile
+                    }
+                  >
+                    {savingProfile
+                      ? "Saving & finding matches..."
+                      : "Save Profile & Find My Matches →"}
+                  </button>
+
+                </div>
+
+              </div>
+            )}
+
+            {/* PROFILE MESSAGE */}
+
+            {profileMessage && (
+              <div
+                className="profile-message"
+                style={{
+                  marginTop:
+                    "16px",
+                  lineHeight:
+                    "1.5",
+                }}
+              >
+                {profileMessage}
+              </div>
+            )}
+
+            {/* SAVED PROFILE SUMMARY */}
+
+            {profileSaved && (
+              <div
+                style={{
+                  marginTop:
+                    "15px",
+                  padding:
+                    "12px 14px",
+                  borderRadius:
+                    "11px",
+                  background:
+                    "#eaf8f3",
+                  color:
+                    "#16816f",
+                  fontSize:
+                    "12px",
+                  lineHeight:
+                    "1.5",
+                }}
+              >
+                ✓ Your profile is saved.
+                AENOVA will keep your entered
+                information in this browser
+                and use your saved profile ID
+                for recommendations.
+              </div>
+            )}
+
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* =================================================
+          RECOMMENDATIONS
+      ================================================= */}
+
+      <section
+        className="opportunities-section"
+        id="recommendations"
+        style={{
+          background:
+            "linear-gradient(180deg,#f8f8ff,#ffffff)",
+        }}
+      >
+
+        <div className="section-heading">
+
+          <div className="section-badge">
+            ✦ Your AI Matches
+          </div>
+
+          <h2>
+            Your personalized
+            <span>
+              {" "}opportunities.
+            </span>
+          </h2>
+
+          <p>
+            These recommendations are based
+            on your saved profile and the
+            current opportunity listings
+            available to AENOVA.
+          </p>
+
+        </div>
+
+        {/* PROFILE STATUS */}
+
+        {!profileSaved && (
+          <div
+            style={{
+              maxWidth:
+                "800px",
+              margin:
+                "0 auto 25px",
+              padding:
+                "18px",
+              borderRadius:
+                "15px",
+              background:
+                "#f2f1ff",
+              border:
+                "1px solid #ddd9ff",
+              textAlign:
+                "center",
+              color:
+                "#514ac2",
+            }}
+          >
+            <strong>
+              Complete your profile first.
+            </strong>
+
+            <br />
+
+            <span
+              style={{
+                fontSize:
+                  "13px",
+              }}
+            >
+              AENOVA needs your skills,
+              interests and career goal
+              before it can personalize
+              your matches.
+            </span>
+
+            <br />
+
+            <button
+              type="button"
+              onClick={() =>
+                scrollToSection(
+                  "profile"
+                )
+              }
+              style={{
+                marginTop:
+                  "12px",
+                border:
+                  "none",
+                borderRadius:
+                  "9px",
+                padding:
+                  "9px 15px",
+                background:
+                  "#6257e8",
+                color:
+                  "#fff",
+                fontWeight:
+                  "700",
+                cursor:
+                  "pointer",
+              }}
+            >
+              Complete Profile →
+            </button>
+          </div>
+        )}
+
+        {/* LOADING */}
+
+        {loadingRecommendations && (
+          <div
+            className="empty-opportunities"
+          >
+            <h3>
+              ✦ Creating your matches...
+            </h3>
+
+            <p>
+              AENOVA is analyzing your
+              profile against the available
+              opportunities.
+            </p>
+          </div>
+        )}
+
+        {/* SUCCESS GUIDANCE */}
+
+        {profileSaved &&
+          !loadingRecommendations &&
+          topRecommendations.length >
+            0 && (
+            <div
+              style={{
+                maxWidth:
+                  "900px",
+                margin:
+                  "0 auto 24px",
+                padding:
+                  "17px 20px",
+                borderRadius:
+                  "15px",
+                background:
+                  "linear-gradient(135deg,#eaf8f3,#f1f0ff)",
+                border:
+                  "1px solid #dddff4",
+                textAlign:
+                  "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize:
+                    "16px",
+                  fontWeight:
+                    "800",
+                  color:
+                    "#16866f",
+                  marginBottom:
+                    "5px",
+                }}
+              >
+                ✓ Your recommendations are ready!
+              </div>
+
+              <div
+                style={{
+                  color:
+                    "#66677b",
+                  fontSize:
+                    "12px",
+                }}
+              >
+                AENOVA found{" "}
+                <strong>
+                  {
+                    topRecommendations.length
+                  }
+                </strong>{" "}
+                potential matches from
+                the current listings.
+              </div>
+            </div>
+          )}
+
+        {/* ERROR / INFORMATION */}
+
+        {recommendationMessage &&
+          !loadingRecommendations && (
+            <div
+              style={{
+                maxWidth:
+                  "800px",
+                margin:
+                  "0 auto 20px",
+                padding:
+                  "14px 17px",
+                borderRadius:
+                  "12px",
+                background:
+                  "#fff8e9",
+                border:
+                  "1px solid #f0dfb4",
+                color:
+                  "#80621c",
+                fontSize:
+                  "12px",
+                lineHeight:
+                  "1.5",
+                textAlign:
+                  "center",
+              }}
+            >
+              {recommendationMessage}
+            </div>
+          )}
+
+        {/* RECOMMENDATION CARDS */}
+
+        {!loadingRecommendations &&
+          profileSaved &&
+          topRecommendations.length >
+            0 && (
+            <div
+              style={{
+                maxWidth:
+                  "1050px",
+                margin:
+                  "0 auto",
+                display:
+                  "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(290px,1fr))",
+                gap:
+                  "18px",
+              }}
+            >
+              {topRecommendations.map(
+                (item, index) => (
+                  <RecommendationCard
+                    key={
+                      item.opportunity.id ||
+                      item.opportunity.title ||
+                      index
+                    }
+                    item={item}
+                  />
+                )
+              )}
+            </div>
+          )}
+
+        {!loadingRecommendations &&
+          profileSaved &&
+          topRecommendations.length ===
+            0 && (
+            <div
+              className="empty-opportunities"
+            >
+              <h3>
+                No strong matches yet
+              </h3>
+
+              <p>
+                Your profile is saved,
+                but there are no strong
+                matches in the current
+                opportunity listings.
+                Try updating your skills,
+                interests or career goal.
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  scrollToSection(
+                    "profile"
+                  )
+                }
+                style={{
+                  marginTop:
+                    "12px",
+                  border:
+                    "none",
+                  borderRadius:
+                    "10px",
+                  padding:
+                    "11px 17px",
+                  background:
+                    "#6257e8",
+                  color:
+                    "#fff",
+                  fontWeight:
+                    "700",
+                  cursor:
+                    "pointer",
+                }}
+              >
+                Update My Profile →
+              </button>
+            </div>
+          )}
+
+      </section>
+
+      {/* =================================================
+          HERO / MAIN INTRO
+      ================================================= */}
+
       <section
         className="hero"
         id="home"
       >
+
         <div className="hero-content">
+
           <div className="hero-badge">
             ✦ AI-Powered Student Opportunities
           </div>
@@ -2010,18 +3283,18 @@ function App() {
 
           <p>
             AENOVA connects students with
-            real opportunities that match
-            their interests, skills, goals,
-            department, and learning journey
-            across Tamil Nadu and India.
+            real public opportunities that
+            can match their skills, interests,
+            department and career direction.
           </p>
 
           <div className="hero-buttons">
+
             <a
               href="#recommendations"
               className="primary-button"
             >
-              Get My AI Matches →
+              View My AI Matches →
             </a>
 
             <a
@@ -2030,31 +3303,47 @@ function App() {
             >
               Meet ANEBESTRA
             </a>
+
           </div>
 
           <div className="hero-note">
             ✦ All departments
             &nbsp; • &nbsp;
-            Real opportunity listings
+            Real public listings
             &nbsp; • &nbsp;
             Explainable recommendations
           </div>
+
+          {backendMessage && (
+            <div className="backend-status">
+              ✓ {backendMessage}
+            </div>
+          )}
+
         </div>
 
         <div className="hero-visual">
+
           <img
             src={HeroStudent}
             alt="Student discovering opportunities"
           />
+
         </div>
+
       </section>
 
-      {/* FEATURES */}
+      {/* =================================================
+          FEATURES
+      ================================================= */}
+
       <section
         className="features-section"
         id="features"
       >
+
         <div className="section-heading">
+
           <div className="section-badge">
             ✦ Built for students
           </div>
@@ -2069,88 +3358,117 @@ function App() {
           <p>
             AENOVA combines real opportunity
             discovery, personalized matching,
-            feedback, and AI assistance.
+            feedback and AI assistance.
           </p>
+
         </div>
 
         <div className="features-grid">
+
           <div className="feature-card">
+
             <div className="feature-icon blue-icon">
               ✦
             </div>
+
             <h3>
               AI Recommendation Engine
             </h3>
+
             <p>
-              Your profile is compared with
-              available real opportunities to
-              rank relevant options.
+              Your saved profile is used
+              to rank relevant opportunity
+              listings.
             </p>
+
             <a href="#recommendations">
               See my matches →
             </a>
+
           </div>
 
           <div className="feature-card">
+
             <div className="feature-icon purple-icon">
               ✦
             </div>
+
             <h3>
               All Departments
             </h3>
+
             <p>
-              Students from engineering,
-              commerce, management, law,
-              design, agriculture, arts and
-              other fields can use AENOVA.
+              Engineering, commerce,
+              management, law, design,
+              agriculture, arts and other
+              fields can use AENOVA.
             </p>
+
             <a href="#profile">
               Build profile →
             </a>
+
           </div>
 
           <div className="feature-card">
+
             <div className="feature-icon teal-icon">
               ✦
             </div>
+
             <h3>
               Real Opportunities
             </h3>
+
             <p>
-              AENOVA uses public opportunity
-              listings and provides the official
-              listing whenever available.
+              AENOVA displays current public
+              listings collected by the
+              opportunity engine.
             </p>
+
             <a href="#opportunities">
-              Explore opportunities →
+              Explore listings →
             </a>
+
           </div>
 
           <div className="feature-card">
+
             <div className="feature-icon orange-icon">
               ✦
             </div>
+
             <h3>
               ANEBESTRA AI Assistant
             </h3>
+
             <p>
-              Ask about learning, careers,
-              projects, skills, opportunities,
-              interviews and more.
+              Ask questions about learning,
+              careers, projects, skills and
+              opportunities.
             </p>
+
             <a href="#assistant">
               Talk to ANEBESTRA →
             </a>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* HOW IT WORKS */}
+      {/* =================================================
+          HOW IT WORKS
+      ================================================= */}
+
       <section
         className="how-section"
         id="how-it-works"
       >
+
         <div className="section-heading">
+
           <div className="section-badge">
             ✦ How AENOVA works
           </div>
@@ -2163,27 +3481,35 @@ function App() {
           </h2>
 
           <p>
-            AENOVA uses your actual profile
-            signals to create explainable
-            recommendations.
+            AENOVA uses profile information,
+            opportunity data and feedback to
+            create more relevant discovery.
           </p>
+
         </div>
 
         <div className="steps-container">
+
           <div className="step-card">
+
             <div className="step-number">
               01
             </div>
+
             <div className="step-icon">
               👤
             </div>
+
             <h3>
-              Build Your Profile
+              Build Profile
             </h3>
+
             <p>
-              Add your education, location,
-              skills, interests and career goal.
+              Add education, location,
+              skills, interests and career
+              goal.
             </p>
+
           </div>
 
           <div className="step-connector">
@@ -2191,19 +3517,24 @@ function App() {
           </div>
 
           <div className="step-card">
+
             <div className="step-number">
               02
             </div>
+
             <div className="step-icon">
               🧠
             </div>
+
             <h3>
               Understand
             </h3>
+
             <p>
-              AENOVA identifies useful signals
-              from your profile.
+              AENOVA extracts useful profile
+              signals for matching.
             </p>
+
           </div>
 
           <div className="step-connector">
@@ -2211,19 +3542,24 @@ function App() {
           </div>
 
           <div className="step-card">
+
             <div className="step-number">
               03
             </div>
+
             <div className="step-icon">
               🎯
             </div>
+
             <h3>
-              Match
+              Recommend
             </h3>
+
             <p>
-              Real opportunities are ranked
-              according to relevance.
+              Relevant real opportunity
+              listings are ranked for you.
             </p>
+
           </div>
 
           <div className="step-connector">
@@ -2231,485 +3567,63 @@ function App() {
           </div>
 
           <div className="step-card">
+
             <div className="step-number">
               04
             </div>
+
             <div className="step-icon">
               🔄
             </div>
+
             <h3>
               Learn From Feedback
             </h3>
+
             <p>
               Likes and dislikes become
-              additional recommendation signals.
+              additional recommendation
+              signals.
             </p>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* RECOMMENDATIONS */}
-      <section
-        className="opportunities-section"
-        id="recommendations"
-        style={{
-          background:
-            "linear-gradient(180deg,#f8f8ff,#ffffff)",
-        }}
-      >
-        <div className="section-heading">
-          <div className="section-badge">
-            ✦ AI Recommendation Engine
-          </div>
+      {/* =================================================
+          ALL OPPORTUNITIES
+      ================================================= */}
 
-          <h2>
-            Opportunities selected
-            <span>
-              {" "}for you.
-            </span>
-          </h2>
-
-          <p>
-            AENOVA compares your profile
-            with the available real public
-            listings and explains why a
-            recommendation may be relevant.
-          </p>
-        </div>
-
-        <div
-          style={{
-            maxWidth:
-              "1050px",
-            margin:
-              "0 auto 25px",
-            display:
-              "grid",
-            gridTemplateColumns:
-              "repeat(3,1fr)",
-            gap: "14px",
-          }}
-        >
-          <div
-            style={{
-              background:
-                "#fff",
-              border:
-                "1px solid #e8e8f3",
-              borderRadius:
-                "14px",
-              padding:
-                "16px",
-            }}
-          >
-            <div
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#7b7c91",
-                fontWeight:
-                  "700",
-              }}
-            >
-              PROFILE SIGNALS
-            </div>
-
-            <strong
-              style={{
-                display:
-                  "block",
-                fontSize:
-                  "22px",
-                color:
-                  "#5952d8",
-                marginTop:
-                  "4px",
-              }}
-            >
-              {
-                uniqueWords(
-                  profile.skills
-                ).length +
-                uniqueWords(
-                  profile.interests
-                ).length
-              }
-            </strong>
-
-            <span
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#77788c",
-              }}
-            >
-              skills + interests
-            </span>
-          </div>
-
-          <div
-            style={{
-              background:
-                "#fff",
-              border:
-                "1px solid #e8e8f3",
-              borderRadius:
-                "14px",
-              padding:
-                "16px",
-            }}
-          >
-            <div
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#7b7c91",
-                fontWeight:
-                  "700",
-              }}
-            >
-              OPPORTUNITIES ANALYZED
-            </div>
-
-            <strong
-              style={{
-                display:
-                  "block",
-                fontSize:
-                  "22px",
-                color:
-                  "#5952d8",
-                marginTop:
-                  "4px",
-              }}
-            >
-              {opportunities.length}
-            </strong>
-
-            <span
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#77788c",
-              }}
-            >
-              current real listings
-            </span>
-          </div>
-
-          <div
-            style={{
-              background:
-                "#fff",
-              border:
-                "1px solid #e8e8f3",
-              borderRadius:
-                "14px",
-              padding:
-                "16px",
-            }}
-          >
-            <div
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#7b7c91",
-                fontWeight:
-                  "700",
-              }}
-            >
-              FEEDBACK SIGNALS
-            </div>
-
-            <strong
-              style={{
-                display:
-                  "block",
-                fontSize:
-                  "22px",
-                color:
-                  "#5952d8",
-                marginTop:
-                  "4px",
-              }}
-            >
-              {
-                Object.keys(
-                  feedback
-                ).length
-              }
-            </strong>
-
-            <span
-              style={{
-                fontSize:
-                  "11px",
-                color:
-                  "#77788c",
-              }}
-            >
-              preferences learned
-            </span>
-          </div>
-        </div>
-
-        {!profile.skills &&
-          !profile.interests &&
-          !profile.career_goal && (
-            <div
-              style={{
-                maxWidth:
-                  "1050px",
-                margin:
-                  "0 auto 22px",
-                background:
-                  "#f2f1ff",
-                border:
-                  "1px solid #ddd9ff",
-                borderRadius:
-                  "13px",
-                padding:
-                  "14px 17px",
-                color:
-                  "#5049bd",
-                fontSize:
-                  "13px",
-              }}
-            >
-              💡{" "}
-              <strong>
-                Complete your profile
-              </strong>{" "}
-              to get personalized
-              recommendations.
-              {" "}
-              <a
-                href="#profile"
-                style={{
-                  color:
-                    "#4f47d0",
-                  fontWeight:
-                    "800",
-                }}
-              >
-                Complete profile →
-              </a>
-            </div>
-          )}
-
-        <div
-          style={{
-            display:
-              "flex",
-            justifyContent:
-              "center",
-            gap: "8px",
-            marginBottom:
-              "22px",
-            flexWrap:
-              "wrap",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() =>
-              setRecommendationMode(
-                "recommended"
-              )
-            }
-            style={{
-              border:
-                "none",
-              borderRadius:
-                "999px",
-              padding:
-                "9px 15px",
-              cursor:
-                "pointer",
-              fontWeight:
-                "700",
-              background:
-                recommendationMode ===
-                "recommended"
-                  ? "#5d55df"
-                  : "#eeeeF8",
-              color:
-                recommendationMode ===
-                "recommended"
-                  ? "#fff"
-                  : "#55566e",
-            }}
-          >
-            ✦ Recommended
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setRecommendationMode(
-                "all"
-              )
-            }
-            style={{
-              border:
-                "none",
-              borderRadius:
-                "999px",
-              padding:
-                "9px 15px",
-              cursor:
-                "pointer",
-              fontWeight:
-                "700",
-              background:
-                recommendationMode ===
-                "all"
-                  ? "#5d55df"
-                  : "#eeeeF8",
-              color:
-                recommendationMode ===
-                "all"
-                  ? "#fff"
-                  : "#55566e",
-            }}
-          >
-            All analyzed
-          </button>
-        </div>
-
-        {loadingOpportunities ? (
-          <div className="empty-opportunities">
-            <h3>
-              Analyzing opportunities...
-            </h3>
-            <p>
-              AENOVA is preparing your
-              personalized matches.
-            </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              maxWidth:
-                "1050px",
-              margin:
-                "0 auto",
-              display:
-                "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit,minmax(290px,1fr))",
-              gap: "18px",
-            }}
-          >
-            {(recommendationMode ===
-            "recommended"
-              ? topRecommendations
-              : recommendations.slice(
-                  0,
-                  9
-                )
-            ).map(
-              (item, index) => (
-                <RecommendationCard
-                  key={
-                    item.opportunity.id ||
-                    item.opportunity.title ||
-                    index
-                  }
-                  item={item}
-                  featured={
-                    index === 0
-                  }
-                />
-              )
-            )}
-          </div>
-        )}
-
-        {!loadingOpportunities &&
-          topRecommendations.length ===
-            0 && (
-            <div
-              style={{
-                maxWidth:
-                  "700px",
-                margin:
-                  "22px auto 0",
-                textAlign:
-                  "center",
-                padding:
-                  "35px 20px",
-                background:
-                  "#fff",
-                borderRadius:
-                  "18px",
-                border:
-                  "1px solid #e8e8f3",
-              }}
-            >
-              <h3>
-                Build your profile for better matches
-              </h3>
-
-              <p
-                style={{
-                  color:
-                    "#77788c",
-                }}
-              >
-                Add your department,
-                skills, interests and
-                career goal. AENOVA will
-                use those signals to rank
-                real opportunities.
-              </p>
-
-              <a
-                href="#profile"
-                className="primary-button"
-                style={{
-                  display:
-                    "inline-block",
-                  textDecoration:
-                    "none",
-                }}
-              >
-                Complete My Profile →
-              </a>
-            </div>
-          )}
-      </section>
-
-      {/* ALL OPPORTUNITIES */}
       <section
         className="opportunities-section"
         id="opportunities"
       >
+
         <div className="section-heading">
+
           <div className="section-badge">
             ✦ Explore opportunities
           </div>
 
           <h2>
-            Browse the
+            Browse available
             <span>
-              {" "}available listings.
+              {" "}listings.
             </span>
           </h2>
 
           <p>
-            Real public opportunity
-            listings currently collected
-            by AENOVA.
+            These are public opportunity
+            listings currently collected by
+            AENOVA.
           </p>
+
         </div>
 
         <div className="opportunity-tabs">
+
           {[
             "All",
             "Hackathon",
@@ -2749,30 +3663,38 @@ function App() {
               </button>
             )
           )}
+
         </div>
 
         <div className="opportunities-grid">
+
           {loadingOpportunities ? (
             <div className="empty-opportunities">
+
               <h3>
                 Finding current opportunities...
               </h3>
+
               <p>
                 AENOVA is loading public
                 opportunity listings.
               </p>
+
             </div>
           ) : filteredOpportunities.length ===
             0 ? (
             <div className="empty-opportunities">
+
               <h3>
                 No opportunities found
               </h3>
+
               <p>
                 There are currently no
-                listings available for
-                this category.
+                listings available for this
+                category.
               </p>
+
             </div>
           ) : (
             filteredOpportunities.map(
@@ -2787,7 +3709,9 @@ function App() {
                     `${opportunity.title}-${index}`
                   }
                 >
+
                   <div className="opportunity-top">
+
                     <span className="opportunity-type blue-type">
                       {opportunity.category ||
                         "Opportunity"}
@@ -2802,10 +3726,11 @@ function App() {
                           "#16816f",
                       }}
                     >
-                      LIVE ·{" "}
+                      PUBLIC ·{" "}
                       {opportunity.source ||
-                        "PUBLIC"}
+                        "LISTING"}
                     </span>
+
                   </div>
 
                   <h3>
@@ -2819,17 +3744,20 @@ function App() {
                   </p>
 
                   <div className="opportunity-details">
-                    <span>
-                      📍{" "}
-                      {opportunity.location ||
-                        "See official listing"}
-                    </span>
 
-                    <span>
-                      🏢{" "}
-                      {opportunity.organization ||
-                        "See official listing"}
-                    </span>
+                    {opportunity.location && (
+                      <span>
+                        📍{" "}
+                        {opportunity.location}
+                      </span>
+                    )}
+
+                    {opportunity.organization && (
+                      <span>
+                        🏢{" "}
+                        {opportunity.organization}
+                      </span>
+                    )}
 
                     {opportunity.deadline && (
                       <span>
@@ -2844,6 +3772,7 @@ function App() {
                         {opportunity.event_date}
                       </span>
                     )}
+
                   </div>
 
                   {opportunity.url ? (
@@ -2874,727 +3803,27 @@ function App() {
                       Official listing unavailable
                     </button>
                   )}
+
                 </div>
               )
             )
           )}
+
         </div>
+
       </section>
 
-      {/* STUDENT PROFILE */}
-      <section
-        className="profile-section"
-        id="profile"
-      >
-        <div className="section-heading">
-          <span className="section-badge">
-            ✦ Student Profile
-          </span>
+      {/* =================================================
+          ANEBESTRA
+      ================================================= */}
 
-          <h2>
-            Tell AENOVA about
-            <span>
-              {" "}you.
-            </span>
-          </h2>
-
-          <p>
-            Complete your profile step by
-            step. Your information helps
-            AENOVA find relevant real
-            opportunities for your field.
-          </p>
-        </div>
-
-        <div
-          className="profile-form"
-          style={{
-            maxWidth:
-              "620px",
-            margin:
-              "0 auto",
-          }}
-        >
-          {/* PROGRESS */}
-          <div
-            style={{
-              display:
-                "flex",
-              alignItems:
-                "center",
-              justifyContent:
-                "center",
-              gap: "6px",
-              marginBottom:
-                "24px",
-              flexWrap:
-                "wrap",
-            }}
-          >
-            {[1, 2, 3, 4, 5].map(
-              (step) => (
-                <div
-                  key={step}
-                  style={{
-                    display:
-                      "flex",
-                    alignItems:
-                      "center",
-                    gap: "6px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width:
-                        "32px",
-                      height:
-                        "32px",
-                      borderRadius:
-                        "50%",
-                      display:
-                        "grid",
-                      placeItems:
-                        "center",
-                      background:
-                        profileStep >=
-                        step
-                          ? "#6257e8"
-                          : "#eeeeF8",
-                      color:
-                        profileStep >=
-                        step
-                          ? "#fff"
-                          : "#77788c",
-                      fontSize:
-                        "11px",
-                      fontWeight:
-                        "800",
-                    }}
-                  >
-                    {step}
-                  </div>
-
-                  {step < 5 && (
-                    <div
-                      style={{
-                        width:
-                          "35px",
-                        height:
-                          "2px",
-                        background:
-                          profileStep >
-                          step
-                            ? "#6257e8"
-                            : "#e4e4ef",
-                      }}
-                    />
-                  )}
-                </div>
-              )
-            )}
-          </div>
-
-          {/* STEP 1 */}
-          {profileStep === 1 && (
-            <div>
-              <div
-                style={{
-                  textAlign:
-                    "center",
-                  marginBottom:
-                    "18px",
-                }}
-              >
-                <h3
-                  style={{
-                    margin:
-                      "0 0 6px",
-                    color:
-                      "#181b38",
-                  }}
-                >
-                  Basic information
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color:
-                      "#77788c",
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  Let's start with your
-                  basic details.
-                </p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Full name"
-                value={
-                  profile.full_name
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "full_name",
-                    event.target.value
-                  )
-                }
-              />
-
-              <input
-                type="email"
-                placeholder="Email address"
-                value={
-                  profile.email
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "email",
-                    event.target.value
-                  )
-                }
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    !profile.full_name.trim()
-                  ) {
-                    setProfileMessage(
-                      "Please enter your full name."
-                    );
-                    return;
-                  }
-
-                  if (
-                    !profile.email.trim()
-                  ) {
-                    setProfileMessage(
-                      "Please enter your email address."
-                    );
-                    return;
-                  }
-
-                  setProfileMessage("");
-                  setProfileStep(2);
-                }}
-              >
-                Next →
-              </button>
-            </div>
-          )}
-
-          {/* STEP 2 */}
-          {profileStep === 2 && (
-            <div>
-              <div
-                style={{
-                  textAlign:
-                    "center",
-                  marginBottom:
-                    "18px",
-                }}
-              >
-                <h3
-                  style={{
-                    margin:
-                      "0 0 6px",
-                    color:
-                      "#181b38",
-                  }}
-                >
-                  Your education
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color:
-                      "#77788c",
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  Tell AENOVA about your
-                  academic background.
-                </p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="College name"
-                value={
-                  profile.college
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "college",
-                    event.target.value
-                  )
-                }
-              />
-
-              <input
-                type="text"
-                placeholder="Department (CSE, ECE, Mechanical, Commerce, Civil, etc.)"
-                value={
-                  profile.department
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "department",
-                    event.target.value
-                  )
-                }
-              />
-
-              <input
-                type="text"
-                placeholder="Study year (1st Year, 2nd Year, Final Year, etc.)"
-                value={
-                  profile.study_year
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "study_year",
-                    event.target.value
-                  )
-                }
-              />
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap:
-                    "10px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileMessage("");
-                    setProfileStep(1);
-                  }}
-                  style={{
-                    background:
-                      "#eeeeF8",
-                    color:
-                      "#55566e",
-                  }}
-                >
-                  ← Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      !profile.college.trim()
-                    ) {
-                      setProfileMessage(
-                        "Please enter your college name."
-                      );
-                      return;
-                    }
-
-                    if (
-                      !profile.department.trim()
-                    ) {
-                      setProfileMessage(
-                        "Please enter your department."
-                      );
-                      return;
-                    }
-
-                    setProfileMessage("");
-                    setProfileStep(3);
-                  }}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 3 */}
-          {profileStep === 3 && (
-            <div>
-              <div
-                style={{
-                  textAlign:
-                    "center",
-                  marginBottom:
-                    "18px",
-                }}
-              >
-                <h3
-                  style={{
-                    margin:
-                      "0 0 6px",
-                    color:
-                      "#181b38",
-                  }}
-                >
-                  Where are you based?
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color:
-                      "#77788c",
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  Location helps AENOVA
-                  understand nearby
-                  opportunities while still
-                  showing opportunities
-                  across India.
-                </p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="City / Location (e.g. Coimbatore, Chennai, Madurai)"
-                value={
-                  profile.location
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "location",
-                    event.target.value
-                  )
-                }
-              />
-
-              <div
-                style={{
-                  background:
-                    "#f6f5ff",
-                  borderRadius:
-                    "12px",
-                  padding:
-                    "12px",
-                  marginBottom:
-                    "14px",
-                  color:
-                    "#55566e",
-                  fontSize:
-                    "12px",
-                  lineHeight:
-                    "1.5",
-                }}
-              >
-                🌎 AENOVA can recommend
-                opportunities from
-                <strong>
-                  {" "}Tamil Nadu
-                </strong>
-                , other parts of
-                <strong>
-                  {" "}India
-                </strong>
-                , and eligible
-                online/remote listings.
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap:
-                    "10px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileMessage("");
-                    setProfileStep(2);
-                  }}
-                  style={{
-                    background:
-                      "#eeeeF8",
-                    color:
-                      "#55566e",
-                  }}
-                >
-                  ← Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileMessage("");
-                    setProfileStep(4);
-                  }}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4 */}
-          {profileStep === 4 && (
-            <div>
-              <div
-                style={{
-                  textAlign:
-                    "center",
-                  marginBottom:
-                    "18px",
-                }}
-              >
-                <h3
-                  style={{
-                    margin:
-                      "0 0 6px",
-                    color:
-                      "#181b38",
-                  }}
-                >
-                  Your skills & interests
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color:
-                      "#77788c",
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  These are important for
-                  personalized matching.
-                </p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Skills (Python, AutoCAD, Excel, Marketing, Java, etc.)"
-                value={
-                  profile.skills
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "skills",
-                    event.target.value
-                  )
-                }
-              />
-
-              <input
-                type="text"
-                placeholder="Interests (AI, Finance, Design, Robotics, Law, Agriculture, etc.)"
-                value={
-                  profile.interests
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "interests",
-                    event.target.value
-                  )
-                }
-              />
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap:
-                    "10px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileMessage("");
-                    setProfileStep(3);
-                  }}
-                  style={{
-                    background:
-                      "#eeeeF8",
-                    color:
-                      "#55566e",
-                  }}
-                >
-                  ← Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      !profile.skills.trim()
-                    ) {
-                      setProfileMessage(
-                        "Please add at least one skill."
-                      );
-                      return;
-                    }
-
-                    if (
-                      !profile.interests.trim()
-                    ) {
-                      setProfileMessage(
-                        "Please add your interests."
-                      );
-                      return;
-                    }
-
-                    setProfileMessage("");
-                    setProfileStep(5);
-                  }}
-                >
-                  Next →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 5 */}
-          {profileStep === 5 && (
-            <div>
-              <div
-                style={{
-                  textAlign:
-                    "center",
-                  marginBottom:
-                    "18px",
-                }}
-              >
-                <h3
-                  style={{
-                    margin:
-                      "0 0 6px",
-                    color:
-                      "#181b38",
-                  }}
-                >
-                  Your career direction
-                </h3>
-
-                <p
-                  style={{
-                    margin: 0,
-                    color:
-                      "#77788c",
-                    fontSize:
-                      "13px",
-                  }}
-                >
-                  Tell AENOVA what you
-                  want to work towards.
-                </p>
-              </div>
-
-              <input
-                type="text"
-                placeholder="Career goal (AI Engineer, Finance Analyst, Civil Engineer, Lawyer, Designer, etc.)"
-                value={
-                  profile.career_goal
-                }
-                onChange={(event) =>
-                  updateProfile(
-                    "career_goal",
-                    event.target.value
-                  )
-                }
-              />
-
-              <div
-                style={{
-                  background:
-                    "linear-gradient(135deg,#f3f1ff,#f5fbff)",
-                  border:
-                    "1px solid #e4e1ff",
-                  borderRadius:
-                    "13px",
-                  padding:
-                    "14px",
-                  marginBottom:
-                    "15px",
-                  fontSize:
-                    "12px",
-                  color:
-                    "#55566e",
-                  lineHeight:
-                    "1.55",
-                }}
-              >
-                🎯 AENOVA uses your complete
-                profile to rank relevant
-                <strong>
-                  {" "}real opportunities
-                </strong>
-                . All academic fields are
-                supported.
-              </div>
-
-              <div
-                style={{
-                  display:
-                    "flex",
-                  gap:
-                    "10px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileMessage("");
-                    setProfileStep(4);
-                  }}
-                  style={{
-                    background:
-                      "#eeeeF8",
-                    color:
-                      "#55566e",
-                  }}
-                >
-                  ← Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    saveProfile
-                  }
-                  disabled={
-                    savingProfile
-                  }
-                >
-                  {savingProfile
-                    ? "Saving..."
-                    : "Save My Profile ✓"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {profileMessage && (
-            <div className="profile-message">
-              {profileMessage}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ANEBESTRA */}
       <section
         className="assistant-section"
         id="assistant"
       >
+
         <div className="assistant-content">
+
           <div className="section-badge">
             ✦ Meet ANEBESTRA
           </div>
@@ -3626,15 +3855,19 @@ function App() {
           >
             Talk to ANEBESTRA →
           </button>
+
         </div>
 
         <div className="assistant-card">
+
           <div className="assistant-header">
+
             <div className="assistant-avatar">
               ✦
             </div>
 
             <div>
+
               <h3>
                 ANEBESTRA
               </h3>
@@ -3642,7 +3875,9 @@ function App() {
               <span>
                 AI Student Assistant
               </span>
+
             </div>
+
           </div>
 
           <div
@@ -3653,10 +3888,9 @@ function App() {
                 "flex-end",
               marginTop:
                 "10px",
-              marginBottom:
-                "4px",
             }}
           >
+
             <button
               type="button"
               onClick={
@@ -3679,66 +3913,28 @@ function App() {
             >
               + New chat
             </button>
+
           </div>
 
           <div className="chat-messages">
+
             {messages.map(
               (message) => (
                 <div
                   key={
                     message.id
                   }
-                  className={
+                  className={`chat-message ${
                     message.sender ===
                     "bot"
-                      ? "chat-message bot-message"
-                      : "chat-message user-message"
-                  }
-                  style={
-                    message.sender ===
-                    "user"
-                      ? {
-                          background:
-                            "linear-gradient(135deg,#4d6df5,#7651ed)",
-                          color:
-                            "#ffffff",
-                          marginLeft:
-                            "64px",
-                          marginRight:
-                            "0",
-                          borderRadius:
-                            "16px 16px 5px 16px",
-                          padding:
-                            "12px 16px",
-                          textAlign:
-                            "left",
-                          fontWeight:
-                            "600",
-                          boxShadow:
-                            "0 6px 18px rgba(80,80,220,0.15)",
-                          wordBreak:
-                            "break-word",
-                        }
-                      : undefined
-                  }
+                      ? "bot-message"
+                      : "user-message"
+                  }`}
                 >
+
                   {message.isThinking ? (
-                    <div
-                      style={{
-                        display:
-                          "flex",
-                        gap:
-                          "8px",
-                        alignItems:
-                          "center",
-                      }}
-                    >
-                      <span>
-                        ANEBESTRA is thinking
-                      </span>
-                      <span>
-                        •••
-                      </span>
+                    <div>
+                      ANEBESTRA is thinking...
                     </div>
                   ) : message.sender ===
                     "bot" ? (
@@ -3746,8 +3942,6 @@ function App() {
                       style={{
                         lineHeight:
                           "1.6",
-                        textAlign:
-                          "left",
                         width:
                           "100%",
                         wordBreak:
@@ -3772,12 +3966,15 @@ function App() {
                       {message.text}
                     </div>
                   )}
+
                 </div>
               )
             )}
+
           </div>
 
           <div className="chat-input">
+
             <input
               id="assistant-chat"
               type="text"
@@ -3813,11 +4010,17 @@ function App() {
                 ? "..."
                 : "→"}
             </button>
+
           </div>
+
         </div>
+
       </section>
 
-      {/* FINAL CTA */}
+      {/* =================================================
+          FINAL CTA
+      ================================================= */}
+
       <section
         style={{
           padding:
@@ -3828,6 +4031,7 @@ function App() {
             "center",
         }}
       >
+
         <div
           style={{
             maxWidth:
@@ -3836,6 +4040,7 @@ function App() {
               "0 auto",
           }}
         >
+
           <div className="section-badge">
             ✦ Your next step starts here
           </div>
@@ -3874,15 +4079,14 @@ function App() {
                 "0 auto 25px",
             }}
           >
-            Build your profile, explore
-            real opportunities, get
-            personalized recommendations,
-            and talk to ANEBESTRA whenever
-            you need guidance.
+            Complete your profile, discover
+            relevant opportunities and use
+            ANEBESTRA whenever you need
+            guidance.
           </p>
 
           <a
-            href="#recommendations"
+            href="#profile"
             className="primary-button"
             style={{
               display:
@@ -3891,19 +4095,27 @@ function App() {
                 "none",
             }}
           >
-            See My Recommendations →
+            Update My Profile →
           </a>
+
         </div>
+
       </section>
 
-      {/* FOOTER */}
+      {/* =================================================
+          FOOTER
+      ================================================= */}
+
       <footer className="footer">
+
         <div className="footer-logo">
+
           <img
             src={AENOVALogo}
             alt="AENOVA"
             className="aenova-logo"
           />
+
         </div>
 
         <p>
@@ -3914,7 +4126,9 @@ function App() {
           AENOVA — AI-powered opportunity
           discovery for students.
         </span>
+
       </footer>
+
     </div>
   );
 }
