@@ -39,6 +39,8 @@ HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Referer": f"{BASE}/",
+    "Connection": "keep-alive",
 }
 
 # A broad set of cities. The connector uses the searchable listing first,
@@ -365,6 +367,139 @@ def organization_from(value: str) -> str:
     return "Organization not available"
 
 
+
+def listing_card_records(html: str) -> List[Dict[str, str]]:
+    """Parse real internship cards directly from AICTE's public city pages."""
+    soup = BeautifulSoup(html, "html.parser")
+    records: List[Dict[str, str]] = []
+    seen = set()
+
+    detail_anchors = []
+    for a in soup.find_all("a", href=True):
+        href = abs_url(a.get("href", ""))
+        label = soup_text(a).strip().lower()
+        if is_detail(href) or "view details" in label:
+            detail_anchors.append(a)
+
+    for anchor in detail_anchors:
+        url = abs_url(anchor.get("href", ""))
+        raw = str(anchor)
+        if not is_detail(url):
+            for pattern in [
+                r"((?:https?:)?//internship\.aicte-india\.org/(?:internship-details\.php\?[^\"'<>\s]+|internships/[^\"'<>\s]+))",
+                r"((?:/)(?:internship-details\.php\?[^\"'<>\s]+|internships/[^\"'<>\s]+))",
+            ]:
+                m = re.search(pattern, raw, re.I)
+                if m:
+                    url = abs_url(m.group(1))
+                    break
+        if not is_detail(url):
+            continue
+
+        node = anchor
+        card = None
+        for _ in range(10):
+            if node is None:
+                break
+            text_value = soup_text(node)
+            headings = node.find_all(["h1", "h2", "h3", "h4", "h5"])
+            if headings and 40 <= len(text_value) <= 2500:
+                card = node
+                break
+            node = node.parent
+        if card is None:
+            continue
+
+        card_text = soup_text(card)
+        headings = []
+        for h in card.find_all(["h1", "h2", "h3", "h4", "h5"]):
+            value = soup_text(h)
+            if 4 <= len(value) <= 250:
+                headings.append(value)
+
+        title = ""
+        for value in headings:
+            if value.lower() not in {"view details", "apply now", "internship"}:
+                title = value
+                break
+        if not title:
+            continue
+
+        organization = ""
+        if len(headings) > 1:
+            for value in headings[1:]:
+                if value.lower() not in {"view details", "apply now", "internship"}:
+                    organization = value
+                    break
+
+        deadline = deadline_from(card_text)
+        if expired(deadline, card_text):
+            continue
+
+        key = url.rstrip("/").lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        mode = mode_from(card_text)
+        location = location_from(card_text)
+        duration = duration_from(card_text)
+        stipend = stipend_from(card_text)
+        description = "Internship listed on the official AICTE National Internship Portal."
+        extras = []
+        if duration:
+            extras.append(f"Duration: {duration}")
+        if stipend:
+            extras.append(f"Stipend: {stipend}")
+        if mode != "See official listing":
+            extras.append(f"Mode: {mode}")
+        if extras:
+            description += " " + " ".join(extras)
+
+        records.append({
+            "title": title,
+            "organization": organization or "Organization not available",
+            "mode": mode,
+            "location": location or "See official listing",
+            "deadline": deadline,
+            "duration": duration,
+            "stipend": stipend,
+            "description": description,
+            "url": url,
+        })
+
+    return records
+
+
+def record_to_opportunity(record: Dict[str, str]) -> Dict[str, Any]:
+    """Normalize one server-rendered AICTE listing card."""
+    title = text(record.get("title"))
+    organization = text(record.get("organization")) or "Organization not available"
+    description = text(record.get("description"))
+    url = text(record.get("url"))
+    full = " ".join([
+        title, organization, description,
+        text(record.get("mode")), text(record.get("location")),
+    ])
+    return {
+        "title": title[:500],
+        "description": description[:3000],
+        "category": "Internship",
+        "field": field_from(full),
+        "eligibility": "",
+        "organization": organization,
+        "location": text(record.get("location")) or "See official listing",
+        "deadline": text(record.get("deadline")),
+        "event_date": "",
+        "mode": text(record.get("mode")) or "See official listing",
+        "skills_required": "",
+        "url": url,
+        "official_url": url,
+        "source": SOURCE,
+        "source_id": (urlparse(url).query or urlparse(url).path.rstrip("/").split("/")[-1])[:500],
+        "last_verified": now(),
+    }
+
 def parse_detail(url: str) -> Optional[Dict[str, Any]]:
     r = get(url)
     if r is None:
@@ -432,43 +567,24 @@ def parse_detail(url: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def city_links(city: str, page: int = 1) -> List[str]:
-    """
-    Fetch one public AICTE city listing page.
-
-    AICTE currently exposes both plain-city and base64-style public URLs.
-    The plain-city form is tried first because it is currently returning
-    server-rendered listing cards reliably.
-    """
+def city_records(city: str, page: int = 1) -> List[Dict[str, Any]]:
+    """Fetch and parse one public AICTE city listing page."""
     candidates = [
         {"city": city, "page": page},
+        {"city": base64.b64encode(city.encode("utf-8")).decode("ascii"), "page": page},
     ]
-
-    encoded = base64.b64encode(city.encode("utf-8")).decode("ascii")
-    candidates.append({"city": encoded, "page": page})
-
     for params in candidates:
         r = get(CITY_URL, params=params)
         if r is None:
             continue
-
         final_path = urlparse(r.url).path.lower()
         if final_path.rstrip("/") == "/internships":
+            print(f"[AICTE] city={city!r} page={page} redirected to client-rendered /internships")
             continue
-
-        links = detail_links(r.text)
-
-        # Helpful diagnostics in Render logs. This lets us distinguish
-        # "no listings" from a page/HTML change without guessing.
-        print(
-            f"[AICTE] city={city!r} page={page} "
-            f"status={r.status_code} bytes={len(r.text)} "
-            f"detail_links={len(links)}"
-        )
-
-        if links:
-            return links
-
+        records = listing_card_records(r.text)
+        print(f"[AICTE] city={city!r} page={page} status={r.status_code} bytes={len(r.text)} records={len(records)}")
+        if records:
+            return records
     return []
 
 
@@ -477,104 +593,41 @@ def get_aicte_opportunities(
     max_results: int = 120,
 ) -> List[Dict[str, Any]]:
     print("[AICTE] Starting official AICTE connector")
-    print("[AICTE] Using public AICTE city listings because the current")
-    print("[AICTE] /internships page is client-rendered")
+    print("[AICTE] Reading server-rendered public city listings")
 
-    # We intentionally use a broad set of cities rather than claiming that
-    # one city represents India. Pan-India listings are often repeated on
-    # these pages, and the final URL dedupe removes those duplicates.
-    # Pages are kept small to avoid hammering the official portal.
+    results: List[Dict[str, Any]] = []
+    seen_urls = set()
     cities = CITIES[:]
 
-    links: List[str] = []
-    target_link_count = max(max_results * 2, 80)
-
-    # Fetch public city pages concurrently. Two pages per city gives us
-    # substantially more coverage while remaining bounded.
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = {}
-
-        for city in cities:
-            for page in range(1, max(2, min(max_pages + 1, 3))):
-                future = executor.submit(city_links, city, page)
-                futures[future] = (city, page)
+        futures = {
+            executor.submit(city_records, city, page): (city, page)
+            for city in cities
+            for page in range(1, max(2, min(max_pages + 1, 3)))
+        }
 
         for future in as_completed(futures):
             city, page = futures[future]
             try:
-                found = future.result()
-                links.extend(found)
-                if found:
-                    print(
-                        f"[AICTE] {city} page {page}: "
-                        f"{len(found)} official detail links"
-                    )
+                records = future.result()
             except Exception as exc:
-                print(
-                    f"[AICTE] city page failed "
-                    f"{city} page {page}: {exc}"
-                )
+                print(f"[AICTE] city parse failed {city} page {page}: {exc}")
+                continue
 
-            # We cannot cancel already-running HTTP requests, but we can
-            # stop collecting once enough candidate URLs have been found.
-            if len(set(links)) >= target_link_count:
+            for record in records:
+                url = text(record.get("url"))
+                key = url.rstrip("/").lower()
+                if not is_detail(url) or key in seen_urls:
+                    continue
+                seen_urls.add(key)
+                results.append(record_to_opportunity(record))
+                if len(results) >= max_results:
+                    break
+            if len(results) >= max_results:
                 break
 
-    # Deduplicate candidate detail URLs before opening them.
-    unique = []
-    seen = set()
-    for url in links:
-        key = url.rstrip("/").lower()
-        if key not in seen and is_detail(url):
-            seen.add(key)
-            unique.append(url)
-
-    # Keep the detail fetch bounded.
-    unique = unique[:max_results]
-
-    print(
-        f"[AICTE] Unique official detail URLs: {len(unique)}"
-    )
-
-    results: List[Dict[str, Any]] = []
-
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [
-            executor.submit(parse_detail, url)
-            for url in unique
-        ]
-
-        for future in as_completed(futures):
-            try:
-                item = future.result()
-                if item:
-                    results.append(item)
-            except Exception as exc:
-                print(f"[AICTE] detail parse failed: {exc}")
-
-    # Final URL/title dedupe and validation.
-    final = []
-    seen = set()
-
-    for item in results:
-        url = text(item.get("url"))
-        title = text(item.get("title"))
-
-        if not is_detail(url) or not title:
-            continue
-
-        key = url.rstrip("/").lower()
-        if key in seen:
-            continue
-
-        seen.add(key)
-        final.append(item)
-
-    print(
-        f"[AICTE] Final live listings added: {len(final)}"
-    )
-
-    return final[:max_results]
+    print(f"[AICTE] Final live listings added: {len(results)}")
+    return results[:max_results]
 
 
 if __name__ == "__main__":
