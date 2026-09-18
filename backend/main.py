@@ -1998,6 +1998,51 @@ def opportunities(background_tasks: BackgroundTasks):
 
 
 @app.post("/api/profile")
+def rebuild_profile_recommendations_background(profile_id, profile_data):
+    """
+    Generate recommendations after the profile response has already been sent.
+    This keeps the Save Profile button fast.
+    """
+    try:
+        profile_lock = get_profile_lock(str(profile_id))
+
+        with profile_lock:
+            # Use the existing opportunity/recommendation pipeline.
+            # This work happens after the user has already received the
+            # successful profile-save response.
+            live_opportunities = get_cached_opportunities()
+
+            recommendation_rows = save_profile_recommendations(
+                profile_id,
+                profile_data,
+                live_opportunities
+            )
+
+        try:
+            save_activity(
+                profile_id=profile_id,
+                activity_type="profile_saved",
+                details="Student profile saved as a new submission."
+            )
+        except Exception as activity_error:
+            print(
+                f"Profile activity save error for {profile_id}:",
+                activity_error
+            )
+
+        print(
+            f"Background recommendations complete for profile "
+            f"{profile_id}: {len(recommendation_rows)}"
+        )
+
+    except Exception as error:
+        print(
+            f"Background recommendation error for profile "
+            f"{profile_id}:",
+            error
+        )
+
+
 def save_profile(
     profile: ProfileRequest,
     background_tasks: BackgroundTasks
