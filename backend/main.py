@@ -1931,16 +1931,11 @@ def db_test():
 # OPPORTUNITIES
 # ============================================================
 
-# ============================================================
-# FAST OPPORTUNITY LISTING CACHE
-# ============================================================
-
 def get_stored_opportunities_fast(limit=500):
-    """Read already-stored opportunities without live scraping."""
+    """Return already-stored opportunities without running live collectors."""
     try:
         result = (
-            supabase
-            .table("opportunities")
+            supabase.table("opportunities")
             .select("*")
             .order("created_at", desc=True)
             .limit(limit)
@@ -1953,10 +1948,7 @@ def get_stored_opportunities_fast(limit=500):
 
 
 def refresh_opportunities_background():
-    """
-    Refresh public opportunity data after the page has already received
-    the stored listings. This must never block /api/opportunities.
-    """
+    """Refresh live public listings without blocking the browser."""
     try:
         get_cached_opportunities()
         print("Background opportunity refresh completed.")
@@ -1967,16 +1959,12 @@ def refresh_opportunities_background():
 @app.get("/api/opportunities")
 def opportunities(background_tasks: BackgroundTasks):
     """
-    FAST page-load endpoint.
-
-    1. Immediately returns opportunities already stored in Supabase.
-    2. Starts live collection in the background.
-    3. The browser never waits for Unstop/AICTE scraping.
+    Fast opportunity page:
+    - immediately returns stored Supabase listings
+    - refreshes live sources in the background
     """
-
     stored = get_stored_opportunities_fast(limit=500)
 
-    # Refresh in the background only when needed.
     now = time.time()
     cache_is_fresh = (
         bool(OPPORTUNITY_CACHE["data"])
@@ -1984,9 +1972,7 @@ def opportunities(background_tasks: BackgroundTasks):
     )
 
     if not cache_is_fresh:
-        background_tasks.add_task(
-            refresh_opportunities_background
-        )
+        background_tasks.add_task(refresh_opportunities_background)
 
     return {
         "success": True,
@@ -1997,38 +1983,28 @@ def opportunities(background_tasks: BackgroundTasks):
 
 
 
-@app.post("/api/profile")
+# ============================================================
+# SAVE PROFILE
+# ============================================================
+
 def rebuild_profile_recommendations_background(profile_id, profile_data):
-    """
-    Generate recommendations after the profile response has already been sent.
-    This keeps the Save Profile button fast.
-    """
+    """Build recommendations after the profile has already been saved."""
     try:
         profile_lock = get_profile_lock(str(profile_id))
 
         with profile_lock:
-            # Use the existing opportunity/recommendation pipeline.
-            # This work happens after the user has already received the
-            # successful profile-save response.
             live_opportunities = get_cached_opportunities()
-
             recommendation_rows = save_profile_recommendations(
                 profile_id,
                 profile_data,
                 live_opportunities
             )
 
-        try:
-            save_activity(
-                profile_id=profile_id,
-                activity_type="profile_saved",
-                details="Student profile saved as a new submission."
-            )
-        except Exception as activity_error:
-            print(
-                f"Profile activity save error for {profile_id}:",
-                activity_error
-            )
+        save_activity(
+            profile_id=profile_id,
+            activity_type="profile_saved",
+            details="Student profile saved as a new submission."
+        )
 
         print(
             f"Background recommendations complete for profile "
@@ -2043,6 +2019,7 @@ def rebuild_profile_recommendations_background(profile_id, profile_data):
         )
 
 
+@app.post("/api/profile")
 def save_profile(
     profile: ProfileRequest,
     background_tasks: BackgroundTasks
@@ -2142,6 +2119,94 @@ def save_profile(
         return {
             "success": False,
             "message": str(error)
+        }
+
+
+# ============================================================
+# INSTANT RECOMMENDATIONS
+# ============================================================
+
+@app.post("/api/recommendations/fast/{profile_id}")
+def fast_recommendations(profile_id: int):
+    """
+    Fast personalized recommendation path.
+
+    It uses only opportunities already stored in Supabase.
+    It never waits for Unstop/AICTE/live scraping.
+    """
+    try:
+        profile_result = (
+            supabase.table("student_profiles")
+            .select("*")
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not profile_result.data:
+            return {
+                "success": False,
+                "message": "Profile not found.",
+                "recommendations": [],
+            }
+
+        profile_data = profile_result.data[0]
+
+        opportunities = get_stored_opportunities_fast(limit=500)
+
+        scored = []
+
+        for opportunity in opportunities:
+            if not opportunity.get("id"):
+                continue
+
+            analysis = score_opportunity_for_profile(
+                opportunity,
+                profile_data
+            )
+
+            reason_text = "; ".join(
+                analysis.get("reasons", [])
+            ) or "Closest available opportunity based on your profile."
+
+            scored.append({
+                "opportunity_id": opportunity["id"],
+                "match_score": analysis["score"],
+                "score": analysis["score"],
+                "match_reasons": reason_text,
+                "recommendation_reason": reason_text,
+                "matched_skills": ", ".join(
+                    analysis.get("matched_skills", [])
+                ),
+                "matched_interests": ", ".join(
+                    analysis.get("matched_interests", [])
+                ),
+                "matched_career_words": ", ".join(
+                    analysis.get("matched_career_words", [])
+                ),
+                "opportunity": opportunity,
+            })
+
+        scored.sort(
+            key=lambda item: item["match_score"],
+            reverse=True
+        )
+
+        return {
+            "success": True,
+            "profile_id": profile_id,
+            "recommendations": scored[:20],
+            "count": len(scored[:20]),
+            "source": "stored_opportunities",
+        }
+
+    except Exception as error:
+        print("Instant recommendation error:", error)
+
+        return {
+            "success": False,
+            "message": "Unable to generate recommendations right now.",
+            "recommendations": [],
         }
 
 
