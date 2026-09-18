@@ -2090,8 +2090,9 @@ def save_profile(
 def fast_recommendations(profile_id: int):
     """
     Instant recommendation path.
-    Uses only opportunities already stored in Supabase.
-    It never waits for Unstop/AICTE/live collection.
+    Reads opportunities already stored in Supabase, scores them in memory,
+    and returns the best available results without waiting for live scraping
+    or pre-generated recommendation rows.
     """
     try:
         profile_result = (
@@ -2101,6 +2102,7 @@ def fast_recommendations(profile_id: int):
             .limit(1)
             .execute()
         )
+
         if not profile_result.data:
             return {
                 "success": False,
@@ -2118,18 +2120,41 @@ def fast_recommendations(profile_id: int):
         )
         opportunities = opportunities_result.data or []
 
-        rows = save_profile_recommendations(
-            profile_id,
-            profile_data,
-            opportunities,
-        )
+        scored = []
+        for opportunity in opportunities:
+            if not opportunity.get("id"):
+                continue
+
+            analysis = score_opportunity_for_profile(
+                opportunity,
+                profile_data,
+            )
+
+            reasons = analysis["reasons"] or [
+                "Closest available opportunity based on your profile."
+            ]
+
+            scored.append({
+                "opportunity_id": opportunity["id"],
+                "score": analysis["score"],
+                "match_score": analysis["score"],
+                "match_reasons": "; ".join(reasons),
+                "recommendation_reason": "; ".join(reasons),
+                "matched_skills": ", ".join(analysis["matched_skills"]),
+                "matched_interests": ", ".join(analysis["matched_interests"]),
+                "matched_career_words": ", ".join(analysis["matched_career_words"]),
+                "opportunity": opportunity,
+            })
+
+        scored.sort(key=lambda item: item["score"], reverse=True)
+        top_rows = scored[:20]
 
         return {
             "success": True,
             "profile_id": profile_id,
-            "recommendations": rows[:20],
-            "count": len(rows[:20]),
-            "source": "stored_opportunities",
+            "recommendations": top_rows,
+            "count": len(top_rows),
+            "source": "stored_opportunities_instant",
         }
 
     except Exception as error:
@@ -2141,10 +2166,6 @@ def fast_recommendations(profile_id: int):
         }
 
 
-
-# ============================================================
-# FEEDBACK
-# ============================================================
 
 @app.post("/api/feedback")
 def save_feedback(
