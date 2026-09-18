@@ -1931,52 +1931,70 @@ def db_test():
 # OPPORTUNITIES
 # ============================================================
 
-@app.get("/api/opportunities")
-def opportunities():
+# ============================================================
+# FAST OPPORTUNITY LISTING CACHE
+# ============================================================
 
-    data = get_cached_opportunities()
+def get_stored_opportunities_fast(limit=500):
+    """Read already-stored opportunities without live scraping."""
+    try:
+        result = (
+            supabase
+            .table("opportunities")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return result.data or []
+    except Exception as error:
+        print("Stored opportunity read error:", error)
+        return []
+
+
+def refresh_opportunities_background():
+    """
+    Refresh public opportunity data after the page has already received
+    the stored listings. This must never block /api/opportunities.
+    """
+    try:
+        get_cached_opportunities()
+        print("Background opportunity refresh completed.")
+    except Exception as error:
+        print("Background opportunity refresh error:", error)
+
+
+@app.get("/api/opportunities")
+def opportunities(background_tasks: BackgroundTasks):
+    """
+    FAST page-load endpoint.
+
+    1. Immediately returns opportunities already stored in Supabase.
+    2. Starts live collection in the background.
+    3. The browser never waits for Unstop/AICTE scraping.
+    """
+
+    stored = get_stored_opportunities_fast(limit=500)
+
+    # Refresh in the background only when needed.
+    now = time.time()
+    cache_is_fresh = (
+        bool(OPPORTUNITY_CACHE["data"])
+        and now - OPPORTUNITY_CACHE["timestamp"] < CACHE_SECONDS
+    )
+
+    if not cache_is_fresh:
+        background_tasks.add_task(
+            refresh_opportunities_background
+        )
 
     return {
         "success": True,
-        "count": len(data),
-        "opportunities": data
+        "count": len(stored),
+        "opportunities": stored,
+        "refreshing": not cache_is_fresh,
     }
 
-
-# ============================================================
-# SAVE PROFILE
-# ============================================================
-
-def rebuild_profile_recommendations_background(profile_id, profile_data):
-    """Build recommendations after the profile has already been saved."""
-    try:
-        profile_lock = get_profile_lock(str(profile_id))
-
-        with profile_lock:
-            live_opportunities = get_cached_opportunities()
-            recommendation_rows = save_profile_recommendations(
-                profile_id,
-                profile_data,
-                live_opportunities
-            )
-
-        save_activity(
-            profile_id=profile_id,
-            activity_type="profile_saved",
-            details="Student profile saved as a new submission."
-        )
-
-        print(
-            f"Background recommendations complete for profile "
-            f"{profile_id}: {len(recommendation_rows)}"
-        )
-
-    except Exception as error:
-        print(
-            f"Background recommendation error for profile "
-            f"{profile_id}:",
-            error
-        )
 
 
 @app.post("/api/profile")
@@ -2083,89 +2101,8 @@ def save_profile(
 
 
 # ============================================================
-# INSTANT RECOMMENDATIONS FROM STORED OPPORTUNITIES
+# FEEDBACK
 # ============================================================
-
-@app.post("/api/recommendations/fast/{profile_id}")
-def fast_recommendations(profile_id: int):
-    """
-    Instant recommendation path.
-    Reads opportunities already stored in Supabase, scores them in memory,
-    and returns the best available results without waiting for live scraping
-    or pre-generated recommendation rows.
-    """
-    try:
-        profile_result = (
-            supabase.table("student_profiles")
-            .select("*")
-            .eq("id", profile_id)
-            .limit(1)
-            .execute()
-        )
-
-        if not profile_result.data:
-            return {
-                "success": False,
-                "message": "Profile not found.",
-                "recommendations": [],
-            }
-
-        profile_data = profile_result.data[0]
-
-        opportunities_result = (
-            supabase.table("opportunities")
-            .select("*")
-            .limit(500)
-            .execute()
-        )
-        opportunities = opportunities_result.data or []
-
-        scored = []
-        for opportunity in opportunities:
-            if not opportunity.get("id"):
-                continue
-
-            analysis = score_opportunity_for_profile(
-                opportunity,
-                profile_data,
-            )
-
-            reasons = analysis["reasons"] or [
-                "Closest available opportunity based on your profile."
-            ]
-
-            scored.append({
-                "opportunity_id": opportunity["id"],
-                "score": analysis["score"],
-                "match_score": analysis["score"],
-                "match_reasons": "; ".join(reasons),
-                "recommendation_reason": "; ".join(reasons),
-                "matched_skills": ", ".join(analysis["matched_skills"]),
-                "matched_interests": ", ".join(analysis["matched_interests"]),
-                "matched_career_words": ", ".join(analysis["matched_career_words"]),
-                "opportunity": opportunity,
-            })
-
-        scored.sort(key=lambda item: item["score"], reverse=True)
-        top_rows = scored[:20]
-
-        return {
-            "success": True,
-            "profile_id": profile_id,
-            "recommendations": top_rows,
-            "count": len(top_rows),
-            "source": "stored_opportunities_instant",
-        }
-
-    except Exception as error:
-        print("Fast recommendation error:", error)
-        return {
-            "success": False,
-            "message": str(error),
-            "recommendations": [],
-        }
-
-
 
 @app.post("/api/feedback")
 def save_feedback(
