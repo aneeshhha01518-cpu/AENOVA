@@ -2083,6 +2083,66 @@ def save_profile(
 
 
 # ============================================================
+# INSTANT RECOMMENDATIONS FROM STORED OPPORTUNITIES
+# ============================================================
+
+@app.post("/api/recommendations/fast/{profile_id}")
+def fast_recommendations(profile_id: int):
+    """
+    Instant recommendation path.
+    Uses only opportunities already stored in Supabase.
+    It never waits for Unstop/AICTE/live collection.
+    """
+    try:
+        profile_result = (
+            supabase.table("student_profiles")
+            .select("*")
+            .eq("id", profile_id)
+            .limit(1)
+            .execute()
+        )
+        if not profile_result.data:
+            return {
+                "success": False,
+                "message": "Profile not found.",
+                "recommendations": [],
+            }
+
+        profile_data = profile_result.data[0]
+
+        opportunities_result = (
+            supabase.table("opportunities")
+            .select("*")
+            .limit(500)
+            .execute()
+        )
+        opportunities = opportunities_result.data or []
+
+        rows = save_profile_recommendations(
+            profile_id,
+            profile_data,
+            opportunities,
+        )
+
+        return {
+            "success": True,
+            "profile_id": profile_id,
+            "recommendations": rows[:20],
+            "count": len(rows[:20]),
+            "source": "stored_opportunities",
+        }
+
+    except Exception as error:
+        print("Fast recommendation error:", error)
+        return {
+            "success": False,
+            "message": str(error),
+            "recommendations": [],
+        }
+
+
+
+# ============================================================
 # FEEDBACK
 # ============================================================
 
