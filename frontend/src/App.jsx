@@ -667,62 +667,61 @@ function App() {
      LOAD RECOMMENDATIONS
   ======================================================= */
 
-  const loadRecommendations = async (id, options = {}) => {
-    if (!id) return false;
-
-    const shouldPoll = options.poll === true;
-    const maxAttempts = shouldPoll ? 20 : 1;
+  const loadRecommendations = async (id) => {
+    if (!id) {
+      setServerRecommendations([]);
+      return false;
+    }
 
     setLoadingRecommendations(true);
+    setRecommendationMessage("✨ Finding your best matches...");
 
     try {
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const response = await fetch(
-          `${API}/api/recommendations/${id}`,
-          { cache: "no-store" }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok || data?.success === false) {
-          throw new Error(
-            data?.message || "Unable to load recommendations."
-          );
+      // FAST PATH: score opportunities already stored in Supabase.
+      // This does not wait for live scraping.
+      const response = await fetch(
+        `${API}/api/recommendations/fast/${id}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
         }
-
-        const rows = Array.isArray(data?.recommendations)
-          ? data.recommendations
-          : Array.isArray(data?.data)
-            ? data.data
-            : [];
-
-        if (rows.length > 0) {
-          setServerRecommendations(rows);
-          setRecommendationMessage("");
-          setLoadingRecommendations(false);
-          return true;
-        }
-
-        if (attempt < maxAttempts - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      setServerRecommendations([]);
-
-      setRecommendationMessage(
-        shouldPoll
-          ? "Your profile is saved. Your matches are still being prepared. Please refresh shortly."
-          : "Your profile is saved, but there are no strong matches in the current opportunity listings yet."
       );
 
+      const data = await response.json();
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(
+          data?.message ||
+          "Unable to load recommendations."
+        );
+      }
+
+      const rows = Array.isArray(data?.recommendations)
+        ? data.recommendations
+        : [];
+
+      setServerRecommendations(rows);
+
+      if (rows.length > 0) {
+        setRecommendationMessage("");
+        setLoadingRecommendations(false);
+        return true;
+      }
+
+      setRecommendationMessage(
+        "No matching opportunities are available right now."
+      );
       setLoadingRecommendations(false);
       return false;
+
     } catch (error) {
       console.error("Recommendation loading error:", error);
       setServerRecommendations([]);
       setRecommendationMessage(
-        "Your profile is saved, but we couldn't load your recommendations right now."
+        "Your profile is saved, but recommendations could not be loaded right now."
       );
       setLoadingRecommendations(false);
       return false;
@@ -993,62 +992,134 @@ function App() {
   ======================================================= */
 
   const saveProfile = async () => {
-    if (savingProfile) return;
+    setProfileMessage("");
+    setRecommendationMessage("");
 
-    const requiredFields = [
-      ["Full Name", profile.full_name],
-      ["Email", profile.email],
-      ["College", profile.college],
-      ["Department", profile.department],
-      ["Study Year", profile.study_year],
-      ["Location", profile.location],
-      ["Skills & Interests", profile.skills || profile.interests],
-      ["Career Goal", profile.career_goal],
-    ];
+    if (!profile.full_name.trim()) {
+      setProfileStep(1);
+      setProfileMessage(
+        "Please enter your full name."
+      );
+      return;
+    }
 
-    const missingField = requiredFields.find(
-      ([, value]) => !String(value || "").trim()
-    );
+    if (!profile.email.trim()) {
+      setProfileStep(1);
+      setProfileMessage(
+        "Please enter your email address."
+      );
+      return;
+    }
 
-    if (missingField) {
-      setProfileMessage(`Please complete ${missingField[0]}.`);
+    if (!profile.college.trim()) {
+      setProfileStep(2);
+      setProfileMessage(
+        "Please enter your college name."
+      );
+      return;
+    }
+
+    if (!profile.department.trim()) {
+      setProfileStep(2);
+      setProfileMessage(
+        "Please enter your department."
+      );
+      return;
+    }
+
+    if (!profile.study_year.trim()) {
+      setProfileStep(2);
+      setProfileMessage(
+        "Please enter your study year."
+      );
+      return;
+    }
+
+    if (!profile.location.trim()) {
+      setProfileStep(3);
+      setProfileMessage(
+        "Please enter your city or location."
+      );
+      return;
+    }
+
+    if (!profile.skills.trim()) {
+      setProfileStep(4);
+      setProfileMessage(
+        "Please add at least one skill."
+      );
+      return;
+    }
+
+    if (!profile.interests.trim()) {
+      setProfileStep(4);
+      setProfileMessage(
+        "Please add your interests."
+      );
+      return;
+    }
+
+    if (!profile.career_goal.trim()) {
+      setProfileStep(5);
+      setProfileMessage(
+        "Please enter your career goal."
+      );
       return;
     }
 
     setSavingProfile(true);
-    setProfileMessage("Saving your profile...");
 
     try {
-      const response = await fetch(`${API}/api/profile`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(profile),
-      });
+      const response = await fetch(
+        `${API}/api/profile`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify(profile),
+        }
+      );
 
       const data = await response.json();
 
-      if (!response.ok || data?.success === false) {
+      if (
+        !response.ok ||
+        data.success === false
+      ) {
         throw new Error(
-          data?.message || "Unable to save your profile."
+          data.message ||
+            data.detail ||
+            "Profile could not be saved."
         );
       }
 
-      const numericProfileId = Number(data.profile_id);
+      let returnedProfileId =
+        data.profile_id ||
+        data.id ||
+        null;
 
-      if (!numericProfileId) {
+      if (
+        !returnedProfileId &&
+        data.data &&
+        data.data.id
+      ) {
+        returnedProfileId =
+          data.data.id;
+      }
+
+      if (!returnedProfileId) {
         throw new Error(
-          "Profile was saved but no profile ID was returned."
+          "The backend did not return a profile ID."
         );
       }
 
-      setProfileId(numericProfileId);
-      setProfileSaved(true);
+      const numericProfileId =
+        Number(returnedProfileId);
 
-      localStorage.setItem(
-        "aenova_profile",
-        JSON.stringify(profile)
+      setProfileId(
+        numericProfileId
       );
 
       localStorage.setItem(
@@ -1056,47 +1127,51 @@ function App() {
         String(numericProfileId)
       );
 
+      localStorage.setItem(
+        "aenova_profile_saved",
+        "true"
+      );
+
+      localStorage.setItem(
+        "aenova_profile",
+        JSON.stringify(profile)
+      );
+
+      setProfileSaved(true);
+
       setProfileMessage(
-        "✓ Profile saved successfully! Taking you to your personalized recommendations..."
+        "✓ Profile saved successfully! Creating your personalized recommendations..."
       );
 
-      setRecommendationMessage(
-        "✨ Preparing your personalized AI matches..."
+      await loadRecommendations(
+        numericProfileId
       );
 
-      // Guide the student directly to AI Matches.
-      setTimeout(() => {
-        scrollToSection("recommendations");
-      }, 150);
-
-      // Recommendations are generated by the backend in the background.
-      // Poll until the new profile's recommendations are available.
-      const ready = await loadRecommendations(
-        numericProfileId,
-        { poll: true }
+      setProfileMessage(
+        "✓ Profile saved successfully! Your personalized recommendations are ready."
       );
 
-      if (ready) {
-        setProfileMessage(
-          "✓ Profile saved successfully! Your personalized recommendations are ready."
-        );
-        setRecommendationMessage("");
-      } else {
-        setProfileMessage(
-          "✓ Profile saved successfully! Your matches are still being prepared."
-        );
-      }
+      scrollToSection(
+        "recommendations"
+      );
     } catch (error) {
-      console.error("Profile save error:", error);
+      console.error(
+        "Profile save error:",
+        error
+      );
+
       setProfileMessage(
         error.message ||
-        "Unable to save your profile. Please try again."
+          "Unable to save your profile."
       );
     } finally {
       setSavingProfile(false);
     }
   };
 
+  /* =======================================================
+     FEEDBACK
+  ======================================================= */
 
   const giveFeedback = (
     opportunity,
