@@ -1967,16 +1967,11 @@ def refresh_opportunities_background():
 @app.get("/api/opportunities")
 def opportunities(background_tasks: BackgroundTasks):
     """
-    FAST page-load endpoint.
-
-    1. Immediately returns opportunities already stored in Supabase.
-    2. Starts live collection in the background.
-    3. The browser never waits for Unstop/AICTE scraping.
+    Return stored opportunities immediately.
+    Live collection is refreshed in the background.
     """
-
     stored = get_stored_opportunities_fast(limit=500)
 
-    # Refresh in the background only when needed.
     now = time.time()
     cache_is_fresh = (
         bool(OPPORTUNITY_CACHE["data"])
@@ -1984,9 +1979,7 @@ def opportunities(background_tasks: BackgroundTasks):
     )
 
     if not cache_is_fresh:
-        background_tasks.add_task(
-            refresh_opportunities_background
-        )
+        background_tasks.add_task(refresh_opportunities_background)
 
     return {
         "success": True,
@@ -1995,39 +1988,20 @@ def opportunities(background_tasks: BackgroundTasks):
         "refreshing": not cache_is_fresh,
     }
 
-
-
-@app.post("/api/profile")
 def rebuild_profile_recommendations_background(profile_id, profile_data):
     """
-    Generate recommendations after the profile response has already been sent.
-    This keeps the Save Profile button fast.
+    Generate recommendations after the profile response has been sent.
+    The profile save itself stays fast.
     """
     try:
         profile_lock = get_profile_lock(str(profile_id))
-
         with profile_lock:
-            # Use the existing opportunity/recommendation pipeline.
-            # This work happens after the user has already received the
-            # successful profile-save response.
+            # Background-only work: live collection and recommendation storage.
             live_opportunities = get_cached_opportunities()
-
             recommendation_rows = save_profile_recommendations(
                 profile_id,
                 profile_data,
                 live_opportunities
-            )
-
-        try:
-            save_activity(
-                profile_id=profile_id,
-                activity_type="profile_saved",
-                details="Student profile saved as a new submission."
-            )
-        except Exception as activity_error:
-            print(
-                f"Profile activity save error for {profile_id}:",
-                activity_error
             )
 
         print(
@@ -2043,6 +2017,7 @@ def rebuild_profile_recommendations_background(profile_id, profile_data):
         )
 
 
+@app.post("/api/profile")
 def save_profile(
     profile: ProfileRequest,
     background_tasks: BackgroundTasks
