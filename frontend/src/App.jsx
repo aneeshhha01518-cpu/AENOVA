@@ -677,8 +677,6 @@ function App() {
     setRecommendationMessage("✨ Finding your best matches...");
 
     try {
-      // FAST PATH: score opportunities already stored in Supabase.
-      // This does not wait for live scraping.
       const response = await fetch(
         `${API}/api/recommendations/fast/${id}`,
         {
@@ -694,8 +692,7 @@ function App() {
 
       if (!response.ok || data?.success === false) {
         throw new Error(
-          data?.message ||
-          "Unable to load recommendations."
+          data?.message || "Unable to load recommendations."
         );
       }
 
@@ -706,13 +703,22 @@ function App() {
       setServerRecommendations(rows);
 
       if (rows.length > 0) {
-        setRecommendationMessage("");
+        const strongCount = rows.filter(
+          (row) => Number(row.match_score ?? row.score ?? 0) >= 35
+        ).length;
+
+        setRecommendationMessage(
+          strongCount > 0
+            ? ""
+            : "These are the closest available opportunities right now. Stronger matches will appear when more relevant opportunities are available."
+        );
+
         setLoadingRecommendations(false);
         return true;
       }
 
       setRecommendationMessage(
-        "No matching opportunities are available right now."
+        "No opportunities are available right now. New opportunities will appear as they are added."
       );
       setLoadingRecommendations(false);
       return false;
@@ -852,10 +858,6 @@ function App() {
 
   const topRecommendations =
     recommendations
-      .filter(
-        (item) =>
-          item.analysis.score >= 35
-      )
       .slice(0, 6);
 
   /* =======================================================
